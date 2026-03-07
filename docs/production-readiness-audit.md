@@ -131,6 +131,48 @@ A corrupt file with `entryPoint >= nodeCount` passes loading without error but c
 
 Unlike `DiskBackedIndexLoader` which guards `dim > 0`, `MmapIndexLoader` reads `dim` from the file header without validating. A corrupt file with `dim == 0` proceeds to create zero-size vector storage, causing division by zero or empty results.
 
+### 2.13 VectorIndex Phantom Type State Machine Is Unsound (Major)
+
+**File:** `Sources/MetalANNS/VectorIndex.swift`
+
+The `VectorIndex<Key, State>` phantom-type state machine is decorative, not enforcing. `build()` returns a new `VectorIndex<Key, Ready>` wrapper but reuses the **same** `rawIndex` actor. The caller still holds the `Unbuilt` wrapper and can call `build()` again, corrupting state mid-use if the `Ready` wrapper is being searched concurrently. The `advanced` escape hatch exposes `_GraphIndex` directly, bypassing all phantom-type restrictions.
+
+### 2.14 StreamingIndex Background Merge Error Is Sticky and Unrecoverable (Major)
+
+**File:** `Sources/MetalANNS/StreamingIndex.swift`
+
+`lastBackgroundMergeError` is set on background merge failure, and `checkBackgroundMergeError()` is called at the top of `insert()`, `search()`, etc. Once a background merge fails, the **entire index becomes permanently unusable** — every subsequent operation throws. There is no `clearError()` or retry mechanism. This is a production availability killer for long-running services.
+
+### 2.15 QueryFilter `.not(.any)` Semantic Inversion (Major)
+
+**File:** `Sources/MetalANNS/VectorIndex.swift:108-109`
+
+`.not(.any)` — which should mean "match nothing" — returns `nil`, which means "no filter" (match everything). This is a semantic inversion: the filter returns the **exact opposite** of what it should. Additionally, `.or([.any, .equals(...)])` should short-circuit to `.any` but instead drops the `.any`, incorrectly narrowing results.
+
+### 2.16 `_GraphIndex.batchSearch` Force-Unwrap Crash (Major)
+
+**File:** `Sources/MetalANNS/ANNSIndex.swift:926`
+
+`orderedResults.map { $0! }` will crash if any slot is nil. This happens if a task group child throws and `for try await` exits early — completed results are recorded but remaining slots stay nil. The streaming index's version correctly uses `$0 ?? []`. This is a crash-on-error bug.
+
+### 2.17 ShardedIndex Probe Count Inconsistency (Minor)
+
+**File:** `Sources/MetalANNS/ShardedIndex.swift`
+
+`search()` uses `min(nprobe, shards.count)` but `searchForBatch()` uses `min(shards.count, nprobe + 1)`. The batch path probes one extra shard, causing different results for the same query depending on the code path.
+
+### 2.18 IVFPQIndex Silently Returns Empty on Error (Major)
+
+**File:** `Sources/MetalANNS/IVFPQIndex.swift:148-159`
+
+`search()` returns `[]` instead of throwing when the index is untrained, query dimension is wrong, or centroids are empty. Users cannot distinguish "no results" from "misconfigured query." Contrast with `_GraphIndex.search()` which correctly throws `ANNSError.dimensionMismatch`.
+
+### 2.19 StreamingIndex `batchSearch` Serializes Through Actor (Minor)
+
+**File:** `Sources/MetalANNS/StreamingIndex.swift:223-237`
+
+`batchSearch` spawns tasks via `withThrowingTaskGroup` that each call `self.search()`. Since `_StreamingIndex` is an actor, all these calls serialize through actor isolation. The "parallel" searches run sequentially, defeating the purpose of the task group.
+
 ---
 
 ## 3. Architecture & Design Gaps
@@ -482,8 +524,12 @@ platforms: [.iOS(.v17), .macOS(.v14), .visionOS(.v1)]
 | M5 | Fix DiskBackedVectorBuffer: bounds check on mmap read, fix silent `setCount` no-op | Low |
 | M6 | Fix DiskBackedIndexLoader missing `entryPoint < nodeCount` validation | Low |
 | M7 | Cap `SearchBufferPool.visitedAvailable` to prevent GPU memory leak | Low |
-| M8 | Add tests for concurrent insert + search, corrupted files, capacity exhaustion | Medium |
-| M9 | Add deserialization size limits to prevent memory exhaustion DoS | Low |
+| M8 | Fix sticky `lastBackgroundMergeError` — add recovery/retry mechanism | Low |
+| M9 | Fix QueryFilter `.not(.any)` semantic inversion and `.or` short-circuit | Low |
+| M10 | Fix `batchSearch` force-unwrap crash — use `$0 ?? []` instead of `$0!` | Low |
+| M11 | Fix IVFPQIndex to throw errors instead of returning empty results silently | Low |
+| M12 | Add tests for concurrent insert + search, corrupted files, capacity exhaustion | Medium |
+| M13 | Add deserialization size limits to prevent memory exhaustion DoS | Low |
 
 ### Minor (Should Fix Before 1.0)
 
