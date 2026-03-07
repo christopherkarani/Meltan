@@ -373,33 +373,46 @@ Two threads inserting the same candidate can both pass this check, both find dif
 
 Distance is written before ID in `try_insert_neighbor`. A concurrent reader can observe the new distance but the old ID, leading to incorrect pruning decisions during graph construction.
 
-#### 6.1.6 Buffer Bounds and Overflow (Major)
+#### 6.1.6 NNDescent.metal: `random_init` Produces Duplicate Neighbors (Minor)
+
+When `degree >= node_count - 1`, the `random_init` kernel cannot find enough distinct neighbor candidates. The fallback scan (lines 57-72) loops `node_count` times but exits with `duplicate == true` if all distinct values are exhausted, writing a duplicate neighbor into the adjacency slot.
+
+#### 6.1.7 NNDescent.metal: `local_join` Hardcoded Array Limits (Minor)
+
+```metal
+uint fwd[64];   // line 321
+uint rev[128];  // line 331
+```
+
+Forward neighbors beyond index 63 are silently dropped when `degree > 64`. The host does not validate this constraint. Should either enforce `degree <= 64` on the host or make the array size a compile-time constant matching `degree`.
+
+#### 6.1.8 Buffer Bounds and Overflow (Major)
 
 | Shader | Issue |
 |--------|-------|
-| `Distance.metal` / `DistanceFloat16.metal` | `uint base = tid * dim` overflows `uint32` for large datasets (>4M vectors at dim=1024) |
+| `Distance.metal` / `DistanceFloat16.metal` | `uint base = tid * dim` overflows `uint32` for large datasets (>4M vectors at dim=1024). Use `uint64_t`/`ulong` |
 | `Search.metal` / `SearchFloat16.metal` | `neighbor_index = current.nodeID * degree + neighbor_slot` — nodeID from graph data, no bounds check |
 | `NNDescent.metal` | `visited_generation[nodeID]` — atomic access with unchecked index |
-| `PQDistance.metal` | No validation that threadgroup memory allocation matches `M * Ks` |
+| `PQDistance.metal` | No validation that threadgroup memory allocation matches `M * Ks * sizeof(float)`. Host misconfiguration causes silent OOB writes in threadgroup memory |
 | `HammingDistance.metal` | Same `tid * bytesPerVector` overflow risk |
 
-#### 6.1.7 Search.metal: Candidate Overflow Silently Drops Results (Minor)
+#### 6.1.9 Search.metal: Candidate Overflow Silently Drops Results (Minor)
 
 When `count >= MAX_EF (256)`, new candidates are silently dropped. For dense graphs with high degree, the search misses potentially closer neighbors with no warning.
 
-#### 6.1.8 Search.metal: Visit Generation Counter Wrap Hazard (Minor)
+#### 6.1.10 Search.metal: Visit Generation Counter Wrap Hazard (Minor)
 
-`visit_generation` is `uint`. If the host wraps to a value still present in `visited_generation[]`, nodes appear already-visited when they haven't been.
+`visit_generation` is `uint32`. After 2^32 queries, the counter wraps to 0. If `visited_generation[]` was initialized to 0 and some entries still hold 0, those nodes appear already-visited, causing the search to skip them. The array must be periodically re-initialized, or a 64-bit generation counter used.
 
-#### 6.1.9 Performance Issues in Shaders
+#### 6.1.11 Performance Issues in Shaders
 
 | Issue | Shader | Impact |
 |-------|--------|--------|
-| Byte-at-a-time popcount | `HammingDistance.metal` | 4-8x slower than `uint`/`ulong` popcount |
-| No SIMD vectorization | All distance kernels | Leaves significant GPU bandwidth unused |
-| Single-threaded insertion sort in beam search | `Search.metal` | O(n²) bottleneck blocking all threads per iteration |
-| O(fwd × rev × dim) per thread | `NNDescent.metal` `local_join` | GPU timeout risk for large configurations |
-| Redundant query norm recomputation | `Distance.metal` cosine | `normQSq` same for all threads, recomputed per-thread |
+| Byte-at-a-time popcount | `HammingDistance.metal` | 4-8x slower than `uint`/`ulong` popcount. Cast to `device const uint *` for 4-byte processing |
+| No SIMD vectorization | All distance kernels | Scalar float loads leave significant GPU bandwidth unused. `float4`/`half4` vectorized loads would ~4x memory throughput |
+| Single-threaded insertion sort in beam search | `Search.metal` / `SearchFloat16.metal` | Thread 0 does O(n²) sort of up to 256 entries (65K comparisons) per iteration, up to 512 iterations = ~33M comparisons serialized on one SIMD lane. Existing bitonic sort could be reused |
+| O(fwd × rev × dim) per thread | `NNDescent.metal` / `NNDescentFloat16.metal` `local_join` | For degree=32, max_reverse=128, dim=128: 32×128×128 = 524K FMA ops per thread. GPU command buffer timeouts likely at this scale. Should tile work across threadgroup |
+| Redundant query norm recomputation | `Distance.metal` / `DistanceFloat16.metal` cosine | `normQSq` depends only on `query[]` (same for all threads), recomputed per-thread across `dim` iterations. Precompute on host or once in threadgroup memory |
 
 ### 6.2 File Path Handling (Low)
 
@@ -544,8 +557,8 @@ platforms: [.iOS(.v17), .macOS(.v14), .visionOS(.v1)]
 | B1 | **Fix AccelerateBackend dangling pointer** — `withUnsafeBufferPointer` escapes pointer outside closure (UB on CPU path) | Low |
 | B2 | Audit and fix all 16 `@unchecked Sendable` classes — add synchronization or prove single-owner invariant | High |
 | B3 | Set up CI/CD with automated build + test on every PR | Medium |
-| B4 | Fix PQDistance.metal barrier UB, Sort.metal power-of-2 assumption, NNDescent.metal atomics | High |
-| B5 | Add bounds validation in Metal shaders (at minimum, check `nodeID < node_count`) | Medium |
+| B4 | Fix PQDistance.metal barrier UB, Sort.metal power-of-2 assumption, NNDescent.metal atomics (acquire/release on lock, post-lock duplicate re-check) | High |
+| B5 | Use `uint64_t` for buffer offset calculations in all distance/search shaders to prevent uint32 overflow for large datasets | Medium |
 
 ### Major (Should Fix Before Production)
 
@@ -581,6 +594,9 @@ platforms: [.iOS(.v17), .macOS(.v14), .visionOS(.v1)]
 | m7 | Use `package` access for core internals | Medium |
 | m8 | Document that L2 distance returns squared Euclidean, or rename | Low |
 | m9 | Fix SIMDDistance Hamming packed alignment assumption | Low |
+| m10 | Enforce `degree <= 64` on host for NNDescent, or make `local_join` array size configurable | Low |
+| m11 | Replace single-threaded insertion sort in beam search with parallel bitonic sort | Medium |
+| m12 | Use `float4`/`half4` vectorized loads in distance kernels and wider popcount in Hamming | Medium |
 
 ---
 
