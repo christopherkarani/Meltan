@@ -9,7 +9,7 @@
 
 ## 1. Executive Summary
 
-### Production Readiness Score: 6.5 / 10
+### Production Readiness Score: 5.5 / 10
 
 MetalANNS is an ambitious GPU-accelerated approximate nearest neighbor search library with thoughtful architecture — Swift 6 strict concurrency, actor-based isolation, state-machine index lifecycle, and a two-level streaming merge design. The code demonstrates strong engineering awareness. However, several correctness bugs, pervasive `@unchecked Sendable` usage, missing bounds on unsafe pointer operations, and algorithmic issues in incremental insertion and quantization make it unsuitable for production deployment without remediation.
 
@@ -21,7 +21,7 @@ MetalANNS is an ambitious GPU-accelerated approximate nearest neighbor search li
 | 2 | **IncrementalBuilder fallback unconditionally replaces neighbors** regardless of distance, degrading graph quality over time | Major |
 | 3 | **ProductQuantizer.approximateDistance is mathematically incorrect** for cosine and innerProduct metrics — PQ is only valid for L2 | Major |
 | 4 | **No CI/CD pipeline** — no automated build, test, or lint enforcement exists in the repository | Blocker |
-| 5 | **Metal shaders perform no bounds checking** on buffer accesses — corrupt or adversarial input causes GPU-side buffer overruns | Major |
+| 5 | **Metal shaders have critical correctness bugs**: PQDistance UB at threadgroup barrier, bitonic sort broken for non-power-of-2 degree, NNDescent all-relaxed atomics on lock protocol | Blocker |
 
 ### Release Blockers
 
@@ -29,7 +29,7 @@ MetalANNS is an ambitious GPU-accelerated approximate nearest neighbor search li
 
 2. **No CI/CD:** Zero GitHub Actions, no Xcode Cloud, no Buildkite — there is no automated gate preventing regressions. For a library that will be consumed by downstream applications, this is a deployment blocker.
 
-3. **Streaming merge can lose in-flight inserts:** During `triggerMerge()`, the method snapshots `allIDsList.count` at line 813, then builds a new base from records up to that count. New inserts arriving between the snapshot and the merge completion are captured in a "tail" on line 880 — but if a background merge is running (`.background` strategy), the actor reentrancy semantics mean the tail capture can miss records that were appended during the `await buildIndex(...)` suspension.
+3. **Metal shader correctness bugs:** PQDistance.metal has undefined behavior when `vectorCount` is not a multiple of threadgroup size (early return before barrier). Sort.metal's bitonic sort silently produces wrong results for non-power-of-2 degrees. NNDescent.metal uses `memory_order_relaxed` on its lock protocol, providing no happens-before guarantees — concurrent threads can see stale/torn state. NNDescent duplicate detection races allow duplicate neighbors in adjacency lists.
 
 ---
 
@@ -223,26 +223,77 @@ Both `VectorBuffer.batchInsert` and `Float16VectorBuffer.batchInsert` call `inse
 
 ## 6. Security Risks
 
-### 6.1 Metal Shaders Perform No Bounds Checking (Major)
+### 6.1 Metal Shader Correctness Issues (Blocker / Major)
 
 **Files:** All 9 `.metal` shader files
 
-Every shader accesses buffers via computed indices (`nodeID * dim`, `nodeID * degree + slot`, etc.) without validating against buffer bounds. If corrupted or adversarial data provides an out-of-range `nodeID` or `neighbor_id`, the GPU will read/write beyond buffer boundaries.
+Deep shader audit revealed issues beyond missing bounds checks:
 
-While Metal provides some hardware-level protection (GPU page faults), the behavior is undefined and can cause:
-- GPU hangs requiring device reset
-- Incorrect results from reading garbage memory
-- Potential information leakage from adjacent GPU allocations
+#### 6.1.1 PQDistance.metal: Early Return Before Threadgroup Barrier (Blocker)
 
-**Specific shader concerns:**
+```metal
+if (gid >= vectorCount) { return; }  // Line 44
+// ... later ...
+threadgroup_barrier(mem_flags::mem_threadgroup);  // Line 52
+```
+
+When `vectorCount` is not a multiple of the threadgroup size, threads in the last threadgroup diverge at the barrier — **this is undefined behavior on Metal**. Some threads return early while others wait at the barrier, which can cause GPU hangs or corrupted results. Fix: move the early return after the barrier, or restructure so all threads participate.
+
+#### 6.1.2 Sort.metal: Bitonic Sort Requires Power-of-2 Degree (Major)
+
+```metal
+for (uint k = 2u; k <= degree; k <<= 1u) {
+```
+
+Bitonic sort only produces correct output for power-of-2 input sizes. For non-power-of-2 degrees (e.g., 30, 48), the sort silently produces partially-unsorted output. This corrupts graph neighbor ordering after every sort pass.
+
+#### 6.1.3 NNDescent.metal: All-Relaxed Atomics on Lock Protocol (Major)
+
+All atomic operations use `memory_order_relaxed` — including the CAS used as a spinlock in `try_insert_neighbor`. This means the lock acquisition does not establish a happens-before relationship. Threads that successfully acquire the lock may still see stale distance values. Needs `memory_order_acquire` on CAS success and `memory_order_release` on the unlock store.
+
+#### 6.1.4 NNDescent.metal: Race in Duplicate Neighbor Detection (Major)
+
+```metal
+// Duplicate scan happens BEFORE lock acquisition:
+for (uint slot = 0; slot < degree; slot++) {
+    uint current = atomic_load_explicit(&adj_ids[base + slot], memory_order_relaxed);
+    if (current == candidate) { return false; }
+}
+```
+
+Two threads inserting the same candidate can both pass this check, both find different worst slots, and both insert the same candidate — resulting in duplicate neighbors in the adjacency list.
+
+#### 6.1.5 NNDescent.metal: Non-Atomic Distance+ID Pair Update (Major)
+
+Distance is written before ID in `try_insert_neighbor`. A concurrent reader can observe the new distance but the old ID, leading to incorrect pruning decisions during graph construction.
+
+#### 6.1.6 Buffer Bounds and Overflow (Major)
 
 | Shader | Issue |
 |--------|-------|
-| `Distance.metal` | `base = nodeID * dim` — no check that `nodeID < node_count` |
+| `Distance.metal` / `DistanceFloat16.metal` | `uint base = tid * dim` overflows `uint32` for large datasets (>4M vectors at dim=1024) |
 | `Search.metal` / `SearchFloat16.metal` | `neighbor_index = current.nodeID * degree + neighbor_slot` — nodeID from graph data, no bounds check |
 | `NNDescent.metal` | `visited_generation[nodeID]` — atomic access with unchecked index |
-| `Sort.metal` | `node * degree` — `node` from threadgroup position, could exceed buffer if grid is misconfigured |
-| `PQDistance.metal` | `codes[vecIdx * numSubspaces + s]` — no bounds on `vecIdx` |
+| `PQDistance.metal` | No validation that threadgroup memory allocation matches `M * Ks` |
+| `HammingDistance.metal` | Same `tid * bytesPerVector` overflow risk |
+
+#### 6.1.7 Search.metal: Candidate Overflow Silently Drops Results (Minor)
+
+When `count >= MAX_EF (256)`, new candidates are silently dropped. For dense graphs with high degree, the search misses potentially closer neighbors with no warning.
+
+#### 6.1.8 Search.metal: Visit Generation Counter Wrap Hazard (Minor)
+
+`visit_generation` is `uint`. If the host wraps to a value still present in `visited_generation[]`, nodes appear already-visited when they haven't been.
+
+#### 6.1.9 Performance Issues in Shaders
+
+| Issue | Shader | Impact |
+|-------|--------|--------|
+| Byte-at-a-time popcount | `HammingDistance.metal` | 4-8x slower than `uint`/`ulong` popcount |
+| No SIMD vectorization | All distance kernels | Leaves significant GPU bandwidth unused |
+| Single-threaded insertion sort in beam search | `Search.metal` | O(n²) bottleneck blocking all threads per iteration |
+| O(fwd × rev × dim) per thread | `NNDescent.metal` `local_join` | GPU timeout risk for large configurations |
+| Redundant query norm recomputation | `Distance.metal` cosine | `normQSq` same for all threads, recomputed per-thread |
 
 ### 6.2 File Path Handling (Low)
 
@@ -382,7 +433,8 @@ platforms: [.iOS(.v17), .macOS(.v14), .visionOS(.v1)]
 |---|------|--------|
 | B1 | Audit and fix all 16 `@unchecked Sendable` classes — add synchronization or prove single-owner invariant | High |
 | B2 | Set up CI/CD with automated build + test on every PR | Medium |
-| B3 | Add bounds validation in Metal shaders (at minimum, check `nodeID < node_count`) | Medium |
+| B3 | Fix PQDistance.metal barrier UB, Sort.metal power-of-2 assumption, NNDescent.metal atomics | High |
+| B4 | Add bounds validation in Metal shaders (at minimum, check `nodeID < node_count`) | Medium |
 
 ### Major (Should Fix Before Production)
 
