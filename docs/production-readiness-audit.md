@@ -277,23 +277,29 @@ The deserializer reads magic bytes and version, then trusts `nodeCount`, `degree
 
 | Missing Area | Risk | Priority |
 |---|---|---|
-| **No tests for corrupted/malicious file deserialization** | Untested crash paths | High |
-| **No tests for Metal device unavailability** | CPU fallback never verified in CI | High |
-| **No stress tests for high-volume insertion** | Memory leaks, graph degradation undetected | Medium |
-| **No tests for capacity exhaustion** | UInt32 ID space, buffer capacity overflow | Medium |
-| **No tests for concurrent insert + search** | Only concurrent search is tested | High |
+| **No tests for corrupted/malicious file deserialization** | Untested crash paths — only magic/version corruption tested, no truncated files or corrupted vector data | High |
+| **GPU tests silently skip without GPU** | 11+ test files use `guard MTLCreateSystemDefaultDevice() != nil else { return }` — CI shows green with zero GPU coverage | High |
+| **No concurrent insert + search tests** | `ConcurrentSearchTests` only tests parallel reads, not read/write contention | High |
 | **No tests for `IndexCompactor` metadata loss** | The bug described in 2.7 is untested | High |
-| **No property-based / fuzz testing** | Random inputs never tested | Medium |
 | **No test for PQ with cosine metric** | The bug described in 2.2 is untested | High |
-| **PlaceholderTests.swift exists** | Contains a single trivial test — placeholder | Low |
-| **No tests for DiskBackedVectorBuffer under concurrent access** | @unchecked Sendable, no concurrency test | Medium |
+| **No input validation edge cases** | No tests for NaN/Inf vectors, zero-norm vectors (cosine div-by-zero), k=0, k > count, dim=1 | High |
+| **PlaceholderTests.swift exists** | Single `#expect(true)` — always passes, inflates test counts | Low |
+| **HNSW multi-layer logic essentially untested** | `HNSWTests.swift` has one trivial 2-node test; no multi-layer traversal coverage | High |
+| **Near-exclusive use of cosine metric** | Only `IVFPQIndexTests` uses `.l2`; `.innerProduct` and `.hamming` are untested | Medium |
+| **No disk I/O error path tests** | No tests for save to read-only dir, disk full, or locked SQLite files | Medium |
+| **No stress tests for high-volume insertion** | Memory leaks, graph degradation undetected at 10K+ scale | Medium |
+| **No property-based / fuzz testing** | Random inputs never tested | Medium |
 
 ### 7.3 Test Quality Concerns
 
 - **Recall thresholds are generous:** Most search tests accept recall >= 0.50-0.70, which is low for a production ANN library. Industry standard benchmarks (ann-benchmarks) typically expect 0.90+ at reasonable ef values.
 - **Tests create small indexes:** Most tests use 50-500 vectors. Behavior at 10K-1M scale (where algorithmic issues surface) is untested.
+- **Non-deterministic test data:** Most tests use unseeded `Float.random`, making failures impossible to reproduce. Only `IVFPQIndexTests` uses a `SeededGenerator`.
 - **No test for incremental insert graph degradation:** The fallback bug in IncrementalBuilder (2.1) would only manifest after many sequential inserts.
-- **GPU tests may not run in CI:** Without a GPU-equipped CI runner, all GPU-dependent tests are effectively dead code.
+- **GPU tests may not run in CI:** Without a GPU-equipped CI runner, all GPU-dependent tests are effectively dead code. Affected files: `FullGPUSearchTests`, `NNDescentGPUTests`, `MetalSearchTests`, `MetalDistanceTests`, `GPUADCSearchTests`, `GPUCPUParityTests`, `IVFPQGPUTests`, `MetalContextMultiQueueTests`, `MultiQueuePerformanceTests`, `IntegrationTests` (partial).
+- **No Metal mocking:** Zero test doubles for `MTLDevice`, `MTLCommandQueue`, etc. GPU code paths cannot be unit tested without hardware.
+- **Flaky timing-dependent tests:** `StreamingIndexMergeTests.mergeClearsIsMerging` polls `isMerging` in a loop with 2ms sleep — scheduling-dependent and could pass or fail non-deterministically.
+- **Weak assertions:** `BackendProtocolTests` only checks `backend != nil`. `StreamingIndexInsertTests.insertSingleVector` only asserts count == 1 without verifying retrievability.
 
 ---
 
