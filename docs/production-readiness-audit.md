@@ -201,7 +201,43 @@ The `candidates` list grows without bound — every node passing the distance th
 
 **File:** `Sources/MetalANNSCore/SIMDDistance.swift:100-101`
 
-`aRaw.bindMemory(to: UInt64.self)` requires 8-byte alignment, but `[UInt8]` arrays are not guaranteed to be 8-byte aligned in Swift. This is technically undefined behavior, though it works on current Apple platforms.
+`aRaw.bindMemory(to: UInt64.self)` requires 8-byte alignment, but `[UInt8]` arrays are not guaranteed to be 8-byte aligned in Swift. This is technically undefined behavior, though it works on current Apple platforms. Additionally, `baseAddress!` force-unwraps — crashes on empty input arrays.
+
+### 2.25 SearchGPU: Per-Iteration GPU Dispatch Is Catastrophically Slow (Major)
+
+**File:** `Sources/MetalANNSCore/SearchGPU.swift:50-94`
+
+The beam search loop dispatches one GPU command buffer per iteration to compute distances for a single node's neighbors. GPU dispatch overhead is typically 50-200μs. With ef=200 on a degree-32 graph iterating 100+ times, pure dispatch overhead reaches 5-20ms — far exceeding computation time. Additionally, every call to `computeDistancesOnGPU` allocates 3 new `MTLBuffer` objects (query, neighbors, output). Over 100 iterations this creates ~300 buffer allocations requiring kernel-level memory mapping. This "GPU search" is almost certainly slower than CPU search for any practical configuration.
+
+### 2.26 HNSWBuilder: Naive Neighbor Selection in Skip Layers (Major)
+
+**File:** `Sources/MetalANNSCore/HNSWBuilder.swift:138`
+
+Skip-layer neighbors are selected by raw distance truncation (`candidates.prefix(neighborLimit)`). The HNSW paper specifies a diversity-promoting heuristic ("select neighbors heuristic") that avoids clustering all neighbors in the same spatial region. Without this, skip-layer connectivity on clustered data degenerates, causing search recall to drop significantly on non-uniform distributions.
+
+### 2.27 HNSWBuilder: Hash-Stride Probing May Not Visit All Elements (Minor)
+
+**File:** `Sources/MetalANNSCore/HNSWBuilder.swift:198-209`
+
+The deterministic supplement uses `stride = max(1, nodesAtLayer.count / max(targetCount, 1))` and iterates `probe = (probe + stride) % nodesAtLayer.count`. This visits all elements only if `gcd(stride, count) == 1`. Example: if `count = 100` and `stride = 10`, the probe visits only 10 distinct indices, cycling indefinitely. If `targetCount > 10`, the function silently returns fewer candidates than requested.
+
+### 2.28 HNSWLayers: No Codable Validation on Deserialized Data (Major)
+
+**File:** `Sources/MetalANNSCore/HNSWLayers.swift`
+
+`SkipLayer` conforms to `Codable` but provides no `init(from:)` override with bounds checking. A malformed serialized file could produce a `nodeToLayerIndex` containing indices that exceed `adjacency.count`. When `neighbors(of:at:)` looks up `skipLayer.adjacency[Int(layerIndex)]`, this crashes with an index-out-of-bounds. Since this type is persisted and loaded, this is an attack surface for denial-of-service via crafted index files.
+
+### 2.29 GPUADCSearch: Full Sort for Top-K Selection (Minor)
+
+**File:** `Sources/MetalANNSCore/GPUADCSearch.swift:204-213`
+
+`rankDistances` sorts the entire distance array, then truncates to k. For N=1M codes and k=10, this is O(N log N) when O(N) partial selection (e.g., `nth_element`) would suffice — a 10-20x slowdown for large N. Additionally, the 2D `codes: [[UInt8]]` array is re-flattened and re-uploaded to a new `MTLBuffer` on every search call.
+
+### 2.30 SearchFilter / FullGPUSearch: Dead Code (Minor)
+
+**Files:** `Sources/MetalANNSCore/SearchFilter.swift`, `Sources/MetalANNSCore/FullGPUSearch.swift`
+
+`_LegacySearchFilter` defines an `indirect enum` with `.and`, `.or`, `.not` combinators but contains no `evaluate` method. No search function accepts or applies this filter — it is entirely dead code. `FullGPUSearch` is a thin wrapper around `SearchGPU.search` with an artificial `maxEF = 256` constraint and a comment that the "full GPU beam-search kernel currently exhibits recall regressions" — the actual full-GPU path does not exist.
 
 ---
 
@@ -324,6 +360,18 @@ Storing all vectors in a flat `[Float]` array means every delete/compaction requ
 ### 5.6 Batch Insert Delegates to Single Inserts (Minor)
 
 Both `VectorBuffer.batchInsert` and `Float16VectorBuffer.batchInsert` call `insert(vector:at:)` in a loop. A single `memcpy` for contiguous inserts would be significantly faster.
+
+### 5.7 SearchGPU Per-Iteration Dispatch and Allocation (Major)
+
+**File:** `Sources/MetalANNSCore/SearchGPU.swift`
+
+One GPU command buffer dispatched per beam-search iteration (50-200μs overhead each), plus 3 new `MTLBuffer` allocations per iteration (~300 allocations per search). For practical configurations, the "GPU search" path is slower than CPU beam search due to pure dispatch/allocation overhead dwarfing computation. Should batch all neighbor distances into a single dispatch or use a fully GPU-resident kernel.
+
+### 5.8 GPUADCSearch Codes Re-Flattened Every Search (Minor)
+
+**File:** `Sources/MetalANNSCore/GPUADCSearch.swift:31-51`
+
+The 2D `codes: [[UInt8]]` array is flattened into contiguous memory and uploaded to a new `MTLBuffer` on every search call. For repeated searches against the same index, codes should be pre-flattened and kept in a persistent GPU buffer.
 
 ---
 
@@ -580,6 +628,9 @@ platforms: [.iOS(.v17), .macOS(.v14), .visionOS(.v1)]
 | M14 | Fix GraphPruner to sort candidates by distance before pruning | Low |
 | M15 | Fix GraphRepairer to return 0 updates after rollback | Low |
 | M16 | Cap BeamSearchCPU candidates list at `ef` size; use binary heap | Medium |
+| M17 | Fix SearchGPU: batch dispatches or use fully GPU-resident kernel; pre-allocate and reuse buffers | High |
+| M18 | Fix HNSWBuilder: implement diversity-promoting neighbor selection heuristic for skip layers | Medium |
+| M19 | Add `init(from:)` Codable validation in HNSWLayers to prevent crashes from crafted files | Low |
 
 ### Minor (Should Fix Before 1.0)
 
@@ -597,6 +648,10 @@ platforms: [.iOS(.v17), .macOS(.v14), .visionOS(.v1)]
 | m10 | Enforce `degree <= 64` on host for NNDescent, or make `local_join` array size configurable | Low |
 | m11 | Replace single-threaded insertion sort in beam search with parallel bitonic sort | Medium |
 | m12 | Use `float4`/`half4` vectorized loads in distance kernels and wider popcount in Hamming | Medium |
+| m13 | Fix HNSWBuilder hash-stride probing to use stride coprime to count | Low |
+| m14 | Use partial sort (nth_element) in GPUADCSearch instead of full sort for top-k | Low |
+| m15 | Remove dead code: `_LegacySearchFilter` and `FullGPUSearch` wrapper | Low |
+| m16 | Pre-flatten and cache PQ codes in GPUADCSearch instead of re-uploading per search | Low |
 
 ---
 
