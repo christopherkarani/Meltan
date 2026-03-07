@@ -435,28 +435,32 @@ The deserializer reads magic bytes and version, then trusts `nodeCount`, `degree
 | Missing Area | Risk | Priority |
 |---|---|---|
 | **No tests for corrupted/malicious file deserialization** | Untested crash paths — only magic/version corruption tested, no truncated files or corrupted vector data | High |
-| **GPU tests silently skip without GPU** | 11+ test files use `guard MTLCreateSystemDefaultDevice() != nil else { return }` — CI shows green with zero GPU coverage | High |
-| **No concurrent insert + search tests** | `ConcurrentSearchTests` only tests parallel reads, not read/write contention | High |
+| **GPU tests silently skip without GPU** | 15+ test files use `guard MTLCreateSystemDefaultDevice() != nil else { return }` — CI shows green with zero GPU coverage. Should use `try #require()` or Swift Testing's skip mechanism | High |
+| **No concurrent insert + search tests** | `ConcurrentSearchTests` only tests parallel reads, not read/write contention. No concurrent insert, delete+search, or save+search tests exist | High |
 | **No tests for `IndexCompactor` metadata loss** | The bug described in 2.7 is untested | High |
 | **No test for PQ with cosine metric** | The bug described in 2.2 is untested | High |
-| **No input validation edge cases** | No tests for NaN/Inf vectors, zero-norm vectors (cosine div-by-zero), k=0, k > count, dim=1 | High |
-| **PlaceholderTests.swift exists** | Single `#expect(true)` — always passes, inflates test counts | Low |
-| **HNSW multi-layer logic essentially untested** | `HNSWTests.swift` has one trivial 2-node test; no multi-layer traversal coverage | High |
-| **Near-exclusive use of cosine metric** | Only `IVFPQIndexTests` uses `.l2`; `.innerProduct` and `.hamming` are untested | Medium |
-| **No disk I/O error path tests** | No tests for save to read-only dir, disk full, or locked SQLite files | Medium |
+| **No input validation edge cases** | No tests for NaN/Inf vectors, zero-norm vectors (cosine div-by-zero), k=0, k > count, dim=1, empty index search, batchSearch with 0 queries | High |
+| **PlaceholderTests.swift exists** | Single `#expect(true)` — always passes, inflates test counts. Delete it | Low |
+| **HNSW multi-layer logic essentially untested** | `HNSWTests.swift` has one trivial 2-node test; no multi-layer traversal, entry point selection, layer assignment, or HNSWBuilder/HNSWSearchCPU coverage | High |
+| **Near-exclusive use of cosine metric** | Only `IVFPQIndexTests` uses `.l2`; `.innerProduct` and `.hamming` are completely untested | Medium |
+| **No disk I/O error path tests** | No tests for save to read-only dir, disk full, locked SQLite files, or zero-byte files. Cleanup bug: `IntegrationTests.fullLifecycleIntegration` defer block doesn't remove `.db` sidecar file | Medium |
 | **No stress tests for high-volume insertion** | Memory leaks, graph degradation undetected at 10K+ scale | Medium |
 | **No property-based / fuzz testing** | Random inputs never tested | Medium |
+| **No Metal error path tests** | No tests for shader compilation failure, command buffer errors, GPU timeout, or buffer allocation failure (OOM) | Medium |
+| **No StreamingIndex lifecycle integration test** | No end-to-end test covering insert → search → merge → persist → reload → verify searchability | Medium |
+| **No dimension mismatch tests** | Inserting wrong-dimensionality vectors into built index, searching with wrong-dim query, building with inconsistent dimensions — all untested | Medium |
 
 ### 7.3 Test Quality Concerns
 
-- **Recall thresholds are generous:** Most search tests accept recall >= 0.50-0.70, which is low for a production ANN library. Industry standard benchmarks (ann-benchmarks) typically expect 0.90+ at reasonable ef values.
+- **Recall thresholds are generous:** Most search tests accept recall >= 0.50-0.70, which is low for a production ANN library. Industry standard benchmarks (ann-benchmarks) typically expect 0.90+ at reasonable ef values. `CompactionTests` allows a 20% recall drop (`postRecall >= baseline * 0.80`).
 - **Tests create small indexes:** Most tests use 50-500 vectors. Behavior at 10K-1M scale (where algorithmic issues surface) is untested.
-- **Non-deterministic test data:** Most tests use unseeded `Float.random`, making failures impossible to reproduce. Only `IVFPQIndexTests` uses a `SeededGenerator`.
+- **Non-deterministic test data:** Most tests use unseeded `Float.random`, making failures impossible to reproduce. A `SeededGenerator` exists in `TestUtilities.swift` and is used by `IVFPQIndexTests` and `GPUCPUParityTests`, but the majority of tests ignore it.
 - **No test for incremental insert graph degradation:** The fallback bug in IncrementalBuilder (2.1) would only manifest after many sequential inserts.
-- **GPU tests may not run in CI:** Without a GPU-equipped CI runner, all GPU-dependent tests are effectively dead code. Affected files: `FullGPUSearchTests`, `NNDescentGPUTests`, `MetalSearchTests`, `MetalDistanceTests`, `GPUADCSearchTests`, `GPUCPUParityTests`, `IVFPQGPUTests`, `MetalContextMultiQueueTests`, `MultiQueuePerformanceTests`, `IntegrationTests` (partial).
-- **No Metal mocking:** Zero test doubles for `MTLDevice`, `MTLCommandQueue`, etc. GPU code paths cannot be unit tested without hardware.
-- **Flaky timing-dependent tests:** `StreamingIndexMergeTests.mergeClearsIsMerging` polls `isMerging` in a loop with 2ms sleep — scheduling-dependent and could pass or fail non-deterministically.
-- **Weak assertions:** `BackendProtocolTests` only checks `backend != nil`. `StreamingIndexInsertTests.insertSingleVector` only asserts count == 1 without verifying retrievability.
+- **GPU tests may not run in CI:** Without a GPU-equipped CI runner, all GPU-dependent tests are effectively dead code. Affected files (15+): `FullGPUSearchTests`, `NNDescentGPUTests`, `MetalSearchTests`, `MetalDistanceTests`, `GPUADCSearchTests`, `GPUCPUParityTests`, `IVFPQGPUTests`, `MetalContextMultiQueueTests`, `MultiQueuePerformanceTests`, `BitonicSortTests`, `IntegrationTests` (partial).
+- **No Metal mocking:** Zero test doubles for `MTLDevice`, `MTLCommandQueue`, etc. GPU code paths cannot be unit tested without hardware. No protocol abstraction exists for injecting a fake Metal device.
+- **Flaky timing-dependent tests:** `StreamingIndexMergeTests.mergeClearsIsMerging` polls `isMerging` in a loop with 2ms sleep up to 400 iterations — scheduling-dependent and could pass or fail non-deterministically.
+- **Weak assertions:** `BackendProtocolTests` only checks `backend != nil` — never calls any method on the backend. `StreamingIndexInsertTests.insertSingleVector` only asserts count == 1 without verifying the inserted vector is retrievable via search. Multiple insert tests only verify counts, not searchability.
+- **`ConcurrentSearchTests` is misleadingly named:** Contains two tests that verify `batchSearch` result determinism and throughput — neither exercises true concurrent access patterns (read/write contention, actor contention, or data race detection).
 
 ---
 
