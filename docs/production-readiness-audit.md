@@ -35,6 +35,18 @@ MetalANNS is an ambitious GPU-accelerated approximate nearest neighbor search li
 
 ## 2. Correctness Issues
 
+### 2.0 AccelerateBackend: Use-After-Scope Dangling Pointer (Blocker)
+
+**File:** `Sources/MetalANNSCore/AccelerateBackend.swift:71,130`
+
+```swift
+let queryBase = query.withUnsafeBufferPointer({ $0.baseAddress })
+```
+
+The pointer returned by `withUnsafeBufferPointer` is **only valid inside the closure**. Storing it in `queryBase` and using it outside the closure is **undefined behavior** — the pointer may reference deallocated memory. This affects both `computeCosineDistances` (line 71) and `computeInnerProductDistances` (line 130). Both functions then use `queryBase` with `vDSP_dotpr` in a loop, reading through a potentially-dangling pointer.
+
+**Impact:** Memory corruption or incorrect distance calculations on the CPU fallback path. This is triggered whenever Metal is unavailable and the `AccelerateBackend` is used for cosine or innerProduct searches.
+
 ### 2.1 IncrementalBuilder Fallback Path — Graph Quality Degradation (Major)
 
 **File:** `Sources/MetalANNSCore/IncrementalBuilder.swift:92-121`
@@ -97,6 +109,28 @@ The `compact` method does not accept or return a `MetadataStore`. Any metadata a
 
 `max(nodeCount + 1, nodeCount * 2)` during deserialization — if `nodeCount` exceeds `Int.max / 2`, the multiplication overflows. The serialization path uses checked arithmetic, but this deserialization path does not.
 
+### 2.9 DiskBackedVectorBuffer: No Bounds Check on Mmap Read (Major)
+
+**File:** `Sources/MetalANNSCore/DiskBackedVectorBuffer.swift:56`
+
+`readVector` computes `byteOffset = dataOffset + index * bytesPerVector` and reads from the mmap pointer without verifying the offset falls within the mapped region. A corrupted `count` or out-of-bounds `index` causes a **segfault or reads garbage memory** beyond the mapped region.
+
+### 2.10 DiskBackedVectorBuffer: `setCount` is a Silent No-Op (Major)
+
+**File:** `Sources/MetalANNSCore/DiskBackedVectorBuffer.swift:108-110`
+
+`setCount` ignores its argument entirely (`_ = newCount`). This violates the `VectorStorage` protocol contract. Code that expects to adjust count after pruning or compaction silently does nothing, potentially returning phantom vectors from stale data.
+
+### 2.11 DiskBackedIndexLoader: Missing `entryPoint < nodeCount` Validation (Major)
+
+A corrupt file with `entryPoint >= nodeCount` passes loading without error but causes out-of-bounds graph access on the first search.
+
+### 2.12 MmapIndexLoader: Missing `dim > 0` Validation (Minor)
+
+**File:** `Sources/MetalANNSCore/MmapIndexLoader.swift`
+
+Unlike `DiskBackedIndexLoader` which guards `dim > 0`, `MmapIndexLoader` reads `dim` from the file header without validating. A corrupt file with `dim == 0` proceeds to create zero-size vector storage, causing division by zero or empty results.
+
 ---
 
 ## 3. Architecture & Design Gaps
@@ -115,7 +149,7 @@ The `compact` method does not accept or return a `MetadataStore`. Any metadata a
 | `MetadataBuffer` | `entryPointID`, `nodeCount`, pointer writes | Same |
 | `MetalContext` | Immutable after init | **Safe** — all `let` |
 | `MetalBackend` | Wraps MetalContext | **Safe** — delegates to context |
-| `SearchBufferPool` | Internal buffer cache | Needs audit |
+| `SearchBufferPool` | Internal buffer cache | **Unbounded `visitedAvailable` growth** — GPU memory leak under sustained load |
 | `DiskBackedVectorBuffer` | `count`, file handle state | Data race risk |
 | `MmapRegion` | File descriptor | Low risk |
 | `MmapVectorStorage` | `count` | Data race on setCount |
@@ -431,10 +465,11 @@ platforms: [.iOS(.v17), .macOS(.v14), .visionOS(.v1)]
 
 | # | Item | Effort |
 |---|------|--------|
-| B1 | Audit and fix all 16 `@unchecked Sendable` classes — add synchronization or prove single-owner invariant | High |
-| B2 | Set up CI/CD with automated build + test on every PR | Medium |
-| B3 | Fix PQDistance.metal barrier UB, Sort.metal power-of-2 assumption, NNDescent.metal atomics | High |
-| B4 | Add bounds validation in Metal shaders (at minimum, check `nodeID < node_count`) | Medium |
+| B1 | **Fix AccelerateBackend dangling pointer** — `withUnsafeBufferPointer` escapes pointer outside closure (UB on CPU path) | Low |
+| B2 | Audit and fix all 16 `@unchecked Sendable` classes — add synchronization or prove single-owner invariant | High |
+| B3 | Set up CI/CD with automated build + test on every PR | Medium |
+| B4 | Fix PQDistance.metal barrier UB, Sort.metal power-of-2 assumption, NNDescent.metal atomics | High |
+| B5 | Add bounds validation in Metal shaders (at minimum, check `nodeID < node_count`) | Medium |
 
 ### Major (Should Fix Before Production)
 
@@ -444,8 +479,11 @@ platforms: [.iOS(.v17), .macOS(.v14), .visionOS(.v1)]
 | M2 | Guard ProductQuantizer against non-L2 metrics (throw or document) | Low |
 | M3 | Fix KMeans empty cluster reinitialization | Low |
 | M4 | Fix IndexCompactor to preserve MetadataStore | Medium |
-| M5 | Add tests for concurrent insert + search, corrupted files, capacity exhaustion | Medium |
-| M6 | Add deserialization size limits to prevent memory exhaustion DoS | Low |
+| M5 | Fix DiskBackedVectorBuffer: bounds check on mmap read, fix silent `setCount` no-op | Low |
+| M6 | Fix DiskBackedIndexLoader missing `entryPoint < nodeCount` validation | Low |
+| M7 | Cap `SearchBufferPool.visitedAvailable` to prevent GPU memory leak | Low |
+| M8 | Add tests for concurrent insert + search, corrupted files, capacity exhaustion | Medium |
+| M9 | Add deserialization size limits to prevent memory exhaustion DoS | Low |
 
 ### Minor (Should Fix Before 1.0)
 
@@ -465,11 +503,11 @@ platforms: [.iOS(.v17), .macOS(.v14), .visionOS(.v1)]
 
 MetalANNS demonstrates strong architectural foundations: actor-based concurrency, state-machine lifecycle management, GPU/CPU hybrid execution, and a clean module separation. The streaming merge design and HNSW layer optimization show genuine algorithmic sophistication.
 
-However, the `@unchecked Sendable` escape hatch is used pervasively to work around Swift 6's concurrency checks on GPU buffer types. This creates a systemic data race risk that the compiler cannot catch. Combined with the lack of CI/CD, several algorithmic correctness bugs, and missing edge-case test coverage, the library is not production-ready in its current state.
+However, a confirmed memory safety bug in `AccelerateBackend` (dangling pointer from escaped `withUnsafeBufferPointer` closure), the `@unchecked Sendable` escape hatch used pervasively on 16 GPU buffer classes, critical Metal shader bugs (undefined behavior in PQDistance, broken bitonic sort, racy NNDescent atomics), and missing edge-case test coverage make the library unsuitable for production deployment in its current state.
 
 The issues are fixable. The most impactful change would be establishing a CI pipeline with GPU-equipped runners and investing in concurrency-safety hardening of the buffer types. The algorithmic bugs (IncrementalBuilder fallback, PQ metric validation, KMeans empty clusters) are all straightforward fixes.
 
-**Recommendation:** Address Blockers B1-B3 and Majors M1-M3 before any production deployment. The remaining issues can be addressed incrementally.
+**Recommendation:** Address Blockers B1-B5 and Majors M1-M6 before any production deployment. B1 (AccelerateBackend dangling pointer) is the lowest-effort, highest-impact fix. The remaining issues can be addressed incrementally.
 
 ---
 
