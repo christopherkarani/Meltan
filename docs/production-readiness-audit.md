@@ -173,6 +173,36 @@ The `VectorIndex<Key, State>` phantom-type state machine is decorative, not enfo
 
 `batchSearch` spawns tasks via `withThrowingTaskGroup` that each call `self.search()`. Since `_StreamingIndex` is an actor, all these calls serialize through actor isolation. The "parallel" searches run sequentially, defeating the purpose of the task group.
 
+### 2.20 GraphPruner: Candidates Not Sorted Before Pruning (Major)
+
+**File:** `Sources/MetalANNSCore/GraphPruner.swift:40-66`
+
+The pruning algorithm iterates candidates in adjacency-slot order, not sorted by distance. Since pruning is order-dependent (a closer candidate processed first "shields" farther ones), unsorted input produces suboptimal results — potentially keeping a farther neighbor and pruning a closer one. Additionally, pruning can disconnect the graph with no connectivity check or repair step afterward.
+
+### 2.21 GraphRepairer: Return Value Lies After Rollback (Major)
+
+**File:** `Sources/MetalANNSCore/GraphRepairer.swift:66-86`
+
+If `repairedDiversity < baselineDiversity * 0.98`, the code reverts all changes. But `repair()` returns `updates` (the count before reversion), not 0. The caller believes updates were made when they were actually rolled back.
+
+### 2.22 BeamSearchCPU: Unbounded Candidates List (Major)
+
+**File:** `Sources/MetalANNSCore/BeamSearchCPU.swift`
+
+The `candidates` list grows without bound — every node passing the distance threshold is inserted with O(n) linear insertion. Over a search visiting many nodes, this degrades to O(V × ef) total insertion cost. Standard beam search caps candidates at `ef` size. A binary heap would reduce per-insertion cost to O(log ef).
+
+### 2.23 SIMDDistance: L2 Returns Squared Distance Without Documentation (Minor)
+
+**File:** `Sources/MetalANNSCore/SIMDDistance.swift:54`
+
+`vDSP_distancesq` returns **squared** Euclidean distance. The function is named `l2` but the `SearchResult.score` will contain squared L2. This preserves ordering but confuses users expecting actual L2 distance. Should be documented or renamed.
+
+### 2.24 SIMDDistance: Hamming Packed Potential Alignment UB (Minor)
+
+**File:** `Sources/MetalANNSCore/SIMDDistance.swift:100-101`
+
+`aRaw.bindMemory(to: UInt64.self)` requires 8-byte alignment, but `[UInt8]` arrays are not guaranteed to be 8-byte aligned in Swift. This is technically undefined behavior, though it works on current Apple platforms.
+
 ---
 
 ## 3. Architecture & Design Gaps
@@ -530,6 +560,9 @@ platforms: [.iOS(.v17), .macOS(.v14), .visionOS(.v1)]
 | M11 | Fix IVFPQIndex to throw errors instead of returning empty results silently | Low |
 | M12 | Add tests for concurrent insert + search, corrupted files, capacity exhaustion | Medium |
 | M13 | Add deserialization size limits to prevent memory exhaustion DoS | Low |
+| M14 | Fix GraphPruner to sort candidates by distance before pruning | Low |
+| M15 | Fix GraphRepairer to return 0 updates after rollback | Low |
+| M16 | Cap BeamSearchCPU candidates list at `ef` size; use binary heap | Medium |
 
 ### Minor (Should Fix Before 1.0)
 
@@ -542,6 +575,8 @@ platforms: [.iOS(.v17), .macOS(.v14), .visionOS(.v1)]
 | m5 | Extract common index protocol | Medium |
 | m6 | Replace silent clamping in RepairConfiguration with errors | Low |
 | m7 | Use `package` access for core internals | Medium |
+| m8 | Document that L2 distance returns squared Euclidean, or rename | Low |
+| m9 | Fix SIMDDistance Hamming packed alignment assumption | Low |
 
 ---
 
