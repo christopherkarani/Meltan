@@ -109,3 +109,50 @@ swift test --filter IVFPQComprehensiveTests.benchmarkRecallVsQPS
 swift run -c release MetalANNSBenchmarks --query-count 200 --runs 3 --warmup 1
 swift run -c release MetalANNSBenchmarks --ivfpq --query-count 200 --runs 3 --warmup 1
 ```
+
+## Harness Capabilities
+
+The benchmark CLI emits a startup banner (Metal device, OS build, core count, thermal/low-power state) and per-run captures latency distribution, memory snapshots, and cold-vs-warm timings.
+
+Latency reporting:
+- Per-query latencies are pooled across runs and percentiles (P50/P90/P95/P99/P99.9), mean, stddev, min, max are computed from the pool.
+- An ASCII histogram is printed at the end of every single run.
+- `--histogram-out <path>` writes `<path>.histogram.csv` and `<path>.cdf.csv`.
+
+Cold-vs-warm:
+- The very first dispatch after build is timed separately as `firstQueryLatencyMs` (cold).
+- `warmSteadyMeanMs` is the mean of all subsequent measured queries, excluding the first.
+
+Memory:
+- `MemorySnapshot.capture()` records `phys_footprint` / `resident_size` / `resident_size_peak` via `task_info` before and after build and after queries.
+- Each row reports `indexResidentMB` (post-build delta) and `peakResidentMB`.
+
+Sweeps:
+- `--sweep` sweeps `efSearch`. Combine with `--sweep-degree D1,D2,...` to do a 2D `degree × efSearch` cross-product. Each row is labeled `degree=D,efSearch=E`.
+- `--concurrency-sweep 1,2,4,8,16` sweeps in-flight query count via a `TaskGroup` sliding window through `_GraphIndex.search`. One row per level, labeled `concurrency=N`.
+- After any sweep, the table is followed by an ASCII Pareto chart (recall@10 vs log10 QPS) with `*` for frontier points and `.` for dominated points.
+
+Other flags worth knowing:
+- `--concurrency N` runs a single benchmark with `N` in-flight queries (not a sweep).
+- `--compare cpu,gpu,gpu-adc` emits one row per backend label. NOTE: `_GraphIndex` does not currently expose a public backend selector — the harness prints a warning at startup; the per-label rows reflect run-to-run variance of the auto-selected backend, not distinct backends. Wire-up is structured so a real selector is a one-line swap.
+- `--csv-out <path>` writes a wide CSV with all latency, recall, memory, and concurrency fields.
+- `--json-out <path>` writes the same fields plus full environment metadata.
+
+Examples:
+
+```bash
+# Single run with histogram + cold/warm breakdown
+swift run -c release MetalANNSBenchmarks \
+    --dataset sift1m.annbin --runs 5 --warmup 2 --histogram-out reports/sift1m
+
+# 2D Pareto sweep over (degree, efSearch)
+swift run -c release MetalANNSBenchmarks \
+    --dataset sift1m.annbin --sweep \
+    --sweep-degree 16,32,48 --sweep-efsearch 16,32,64,128,256 \
+    --csv-out reports/sift1m-2d.csv
+
+# Throughput-vs-latency curve
+swift run -c release MetalANNSBenchmarks \
+    --dataset sift1m.annbin --concurrency-sweep 1,2,4,8,16,32 \
+    --csv-out reports/sift1m-conc.csv
+```
