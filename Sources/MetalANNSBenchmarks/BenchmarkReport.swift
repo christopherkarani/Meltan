@@ -14,6 +14,15 @@ public struct BenchmarkReport: Sendable {
         public var queryCount: Int
         public var avgQueryMs: Double
         public var maxQueryMs: Double
+        public var requestedK: Int
+        public var effectiveK: Int
+        public var operation: String
+        public var operationTimeMs: Double
+        public var estimatedBackendPath: String
+        public var rssBeforeBytes: UInt64
+        public var rssAfterBytes: UInt64
+        public var rssDeltaBytes: Int64
+        public var fileSizeBytes: UInt64
 
         public init(
             label: String,
@@ -27,7 +36,16 @@ public struct BenchmarkReport: Sendable {
             recallAt100: Double = 0,
             queryCount: Int = 0,
             avgQueryMs: Double = 0,
-            maxQueryMs: Double = 0
+            maxQueryMs: Double = 0,
+            requestedK: Int = 0,
+            effectiveK: Int = 0,
+            operation: String = "",
+            operationTimeMs: Double = 0,
+            estimatedBackendPath: String = "",
+            rssBeforeBytes: UInt64 = 0,
+            rssAfterBytes: UInt64 = 0,
+            rssDeltaBytes: Int64 = 0,
+            fileSizeBytes: UInt64 = 0
         ) {
             self.label = label
             self.recallAt10 = recallAt10
@@ -41,6 +59,15 @@ public struct BenchmarkReport: Sendable {
             self.queryCount = queryCount
             self.avgQueryMs = avgQueryMs
             self.maxQueryMs = maxQueryMs
+            self.requestedK = requestedK
+            self.effectiveK = effectiveK
+            self.operation = operation
+            self.operationTimeMs = operationTimeMs
+            self.estimatedBackendPath = estimatedBackendPath
+            self.rssBeforeBytes = rssBeforeBytes
+            self.rssAfterBytes = rssAfterBytes
+            self.rssDeltaBytes = rssDeltaBytes
+            self.fileSizeBytes = fileSizeBytes
         }
     }
 
@@ -77,8 +104,10 @@ public struct BenchmarkReport: Sendable {
                 + padLeft("p95ms", to: 7)
                 + " "
                 + padLeft("p99ms", to: 7)
+                + " "
+                + padLeft("opMs", to: 7)
         )
-        lines.append(String(repeating: "-", count: 74))
+        lines.append(String(repeating: "-", count: 82))
 
         for row in rows {
             lines.append(
@@ -95,6 +124,8 @@ public struct BenchmarkReport: Sendable {
                     + padLeft(String(format: "%.2f", row.p95Ms), to: 7)
                     + " "
                     + padLeft(String(format: "%.2f", row.p99Ms), to: 7)
+                    + " "
+                    + padLeft(String(format: "%.2f", row.operationTimeMs), to: 7)
             )
         }
 
@@ -102,17 +133,31 @@ public struct BenchmarkReport: Sendable {
     }
 
     public func renderCSV() -> String {
-        var lines = ["label,recall@10,qps,buildTimeMs,p50ms,p95ms,p99ms"]
+        var lines = ["label,recall@1,recall@10,recall@100,qps,buildTimeMs,p50ms,p95ms,p99ms,queryCount,avgQueryMs,maxQueryMs,requestedK,effectiveK,operation,operationTimeMs,estimatedBackendPath,rssBeforeBytes,rssAfterBytes,rssDeltaBytes,fileSizeBytes"]
         for row in rows {
             lines.append(
                 [
                     csvEscape(row.label),
+                    String(format: "%.6f", row.recallAt1),
                     String(format: "%.6f", row.recallAt10),
+                    String(format: "%.6f", row.recallAt100),
                     String(format: "%.6f", row.qps),
                     String(format: "%.6f", row.buildTimeMs),
                     String(format: "%.6f", row.p50Ms),
                     String(format: "%.6f", row.p95Ms),
-                    String(format: "%.6f", row.p99Ms)
+                    String(format: "%.6f", row.p99Ms),
+                    String(row.queryCount),
+                    String(format: "%.6f", row.avgQueryMs),
+                    String(format: "%.6f", row.maxQueryMs),
+                    String(row.requestedK),
+                    String(row.effectiveK),
+                    csvEscape(row.operation),
+                    String(format: "%.6f", row.operationTimeMs),
+                    csvEscape(row.estimatedBackendPath),
+                    String(row.rssBeforeBytes),
+                    String(row.rssAfterBytes),
+                    String(row.rssDeltaBytes),
+                    String(row.fileSizeBytes)
                 ]
                 .joined(separator: ",")
             )
@@ -121,7 +166,7 @@ public struct BenchmarkReport: Sendable {
     }
 
     public func renderJSON() -> String {
-        var payload: [String: Any] = [
+        let payload: [String: Any] = [
             "datasetLabel": datasetLabel,
             "generatedAt": generatedAt,
             "metadata": metadata,
@@ -138,7 +183,16 @@ public struct BenchmarkReport: Sendable {
                     "recallAt100": row.recallAt100,
                     "queryCount": row.queryCount,
                     "avgQueryMs": row.avgQueryMs,
-                    "maxQueryMs": row.maxQueryMs
+                    "maxQueryMs": row.maxQueryMs,
+                    "requestedK": row.requestedK,
+                    "effectiveK": row.effectiveK,
+                    "operation": row.operation,
+                    "operationTimeMs": row.operationTimeMs,
+                    "estimatedBackendPath": row.estimatedBackendPath,
+                    "rssBeforeBytes": row.rssBeforeBytes,
+                    "rssAfterBytes": row.rssAfterBytes,
+                    "rssDeltaBytes": row.rssDeltaBytes,
+                    "fileSizeBytes": row.fileSizeBytes
                 ]
             }
         ]

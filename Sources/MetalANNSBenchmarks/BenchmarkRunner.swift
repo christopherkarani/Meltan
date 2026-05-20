@@ -27,6 +27,9 @@ struct BenchmarkRunner {
         var recallAt100: Double
         var queryCount: Int = 0
         var totalSearchTimeSeconds: Double = 0
+        var requestedK: Int = 0
+        var effectiveK: Int = 0
+        var estimatedBackendPath: String = ""
     }
 
     static func run(config: Config, repeatRuns: Int = 1, warmupRuns: Int = 0) async throws -> Results {
@@ -131,7 +134,10 @@ struct BenchmarkRunner {
                     recallAt100: result.recallAt100,
                     queryCount: result.queryCount,
                     avgQueryMs: result.queryLatencyMeanMs,
-                    maxQueryMs: result.queryLatencyMaxMs
+                    maxQueryMs: result.queryLatencyMaxMs,
+                    requestedK: result.requestedK,
+                    effectiveK: result.effectiveK,
+                    estimatedBackendPath: result.estimatedBackendPath
                 )
             )
         }
@@ -194,6 +200,13 @@ struct BenchmarkRunner {
         let buildTimeMs = Double(buildEnd - buildStart) / 1_000_000.0
 
         let queryK = max(config.k, top100Count)
+        let estimatedBackendPath = estimatedSearchBackendPath(
+            vectorCount: indexVectors.count,
+            degree: config.degree,
+            metric: config.metric,
+            k: queryK,
+            ef: max(config.efSearch, queryK)
+        )
         let repeats = max(1, repeatRuns)
         let warmups = max(0, warmupRuns)
 
@@ -255,8 +268,31 @@ struct BenchmarkRunner {
             recallAt10: recallAt10Total / (measuredQueryCount * Double(repeats)),
             recallAt100: recallAt100Total / (measuredQueryCount * Double(repeats)),
             queryCount: totalQueryCount,
-            totalSearchTimeSeconds: totalSearchTimeSeconds
+            totalSearchTimeSeconds: totalSearchTimeSeconds,
+            requestedK: config.k,
+            effectiveK: queryK,
+            estimatedBackendPath: estimatedBackendPath
         )
+    }
+
+    static func estimatedSearchBackendPath(
+        vectorCount: Int,
+        degree: Int,
+        metric: Metric,
+        k: Int,
+        ef: Int
+    ) -> String {
+        if metric == .hamming {
+            return "cpu"
+        }
+        if vectorCount < 4_096 {
+            return "cpu"
+        }
+        if k > 256 || ef > 256 {
+            return "cpu"
+        }
+        let estimatedDistanceWork = max(k, ef) * max(degree, 1)
+        return estimatedDistanceWork >= 16_384 ? "hybrid-gpu" : "cpu"
     }
 
     private static func benchmarkBatch(

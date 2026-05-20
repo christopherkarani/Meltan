@@ -72,7 +72,10 @@ public struct IVFPQBenchmark: Sendable {
             recallAt100: anns.recallAt100,
             queryCount: anns.queryCount,
             avgQueryMs: anns.queryLatencyMeanMs,
-            maxQueryMs: anns.queryLatencyMaxMs
+            maxQueryMs: anns.queryLatencyMaxMs,
+            requestedK: anns.requestedK,
+            effectiveK: anns.effectiveK,
+            estimatedBackendPath: anns.estimatedBackendPath
         )
 
         let capacity = max(dataset.trainVectors.count * 2, dataset.trainVectors.count + 1)
@@ -92,7 +95,8 @@ public struct IVFPQBenchmark: Sendable {
         let top1Count = min(1, dataset.neighborsCount)
         let top10Count = min(10, dataset.neighborsCount)
         let top100Count = min(100, dataset.neighborsCount)
-        let queryK = max(10, top100Count)
+        let requestedK = max(1, annsConfig.k)
+        let queryK = max(requestedK, top100Count)
 
         var allLatencies: [Double] = []
         allLatencies.reserveCapacity(queries.count * repeats)
@@ -149,7 +153,10 @@ public struct IVFPQBenchmark: Sendable {
             recallAt100: totalQueryCount > 0 ? recallAt100Total / Double(totalQueryCount) : 0,
             queryCount: totalQueryCount,
             avgQueryMs: mean(in: sortedLatencies),
-            maxQueryMs: sortedLatencies.last ?? 0
+            maxQueryMs: sortedLatencies.last ?? 0,
+            requestedK: requestedK,
+            effectiveK: queryK,
+            estimatedBackendPath: "ivfpq-adaptive"
         )
 
         return ComparisonResults(annsResults: annsRow, ivfpqResults: ivfpqRow)

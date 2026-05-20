@@ -1,3 +1,285 @@
+## MetalANNS — Benchmark Harness Replacement Readiness Review
+
+> **Status**: COMPLETE
+> **Owner**: Codex
+> **Last Updated**: 2026-05-17
+
+## Task Checklist
+
+- [x] Review existing benchmark/task history and project lessons before drawing conclusions.
+- [x] Map benchmark harness entry points, metrics, CLI options, datasets, and report format.
+- [x] Audit tests around benchmark correctness, repeatability, and recall/QPS reporting.
+- [x] Run focused benchmark/test commands to verify current behavior and expose harness gaps.
+- [x] Compare harness coverage against the USearch replacement goal: speed, recall, scale, persistence, filtering, concurrency, GPU/CPU fallback, and integration reliability.
+- [x] Identify framework weak areas that the harness should make visible rather than hide.
+- [x] Document findings, recommended harness upgrades, and verification results.
+
+## Review Results
+
+- Current benchmark harness is a useful foundation but not production-grade enough to justify replacing USearch yet.
+- Verified harness shape:
+  - CLI modes are `single`, `sweep`, `ivfpq`, and `help`.
+  - Current metrics include build time, QPS, mean/p50/p95/p99/max latency, recall@1/10/100, query count, and JSON/CSV output.
+  - Synthetic default remains a tiny `1000 x 128` corpus, and the CLI does not expose `--vector-count` or `--dimension`; attempting `--vector-count 10000` fails with `Unknown argument: --vector-count`.
+  - `_GraphIndex` benchmark searches `max(config.k, top100Count)`, so the default report says `k=10` while timing a top-100 search.
+  - `swift test -c release --filter BenchmarkReportTests` still fails because SwiftPM forwards `--test-bundle-path` into `MetalANNSBenchmarks`, and the benchmark executable treats it as an unknown argument.
+- Verified commands:
+  - `swift test --filter 'BenchmarkDatasetTests|BenchmarkReportTests|BenchmarkRunnerSweepTests|IVFPQBenchmarkTests'` passed, 14 tests.
+  - `swift run -c release MetalANNSBenchmarks --query-count 50 --runs 2 --warmup 1 --json-out /tmp/metalanns-bench-review.json` passed: build `254.8 ms`, mean `0.440 ms`, p95 `0.76 ms`, QPS `2208.19`, recall@1/10/100 `1.000`.
+  - `swift run -c release MetalANNSBenchmarks --sweep --query-count 50 --sweep-efsearch 16,64 --runs 1 --warmup 0 --json-out /tmp/metalanns-sweep-review.json` passed but showed p99 outliers on a small corpus: `efSearch=16 p99=11.11 ms`, `efSearch=64 p99=7.76 ms`.
+  - `swift run -c release MetalANNSBenchmarks --vector-count 10000 --query-count 1` failed as expected because scale knobs are missing.
+  - `swift test -c release --filter BenchmarkReportTests` failed with `Benchmark failed: Invalid dataset: Unknown argument: --test-bundle-path`.
+- Highest-priority harness gaps:
+  - Add first-class scale sweeps for vector count, dimension, k, efSearch, nprobe, metric, and dataset type.
+  - Add phase timers for build internals, IVFPQ train vs add, graph prune, HNSW rebuild, save/load, mmap/disk-backed load, compaction, and first query after load.
+  - Add benchmark modes for filtering, soft deletion, compaction, persistence, sharded index, streaming ingest, concurrent search, mixed read/write, and GPU/CPU parity.
+  - Record backend path per run because the published default corpus does not reach the hard-coded GPU construction/search thresholds.
+  - Add frozen real and adversarial datasets with ground-truth hashes, plus direct USearch side-by-side comparison on the same inputs.
+  - Expand JSON/CSV metadata to include git commit, chip/device, OS, Swift compiler version, Metal device name, power/thermal state, dataset hash, run id, backend path, memory/RSS, GPU buffer bytes, and effective search depth.
+  - Fail on invalid sweep values and metric/ground-truth mismatches instead of silently producing misleading results.
+- Framework weak areas the harness must expose:
+  - GPU graph/search path is mostly untested by default because `_GraphIndex` uses GPU construction only at `>=4096` nodes and hybrid GPU search only above node/work thresholds.
+  - IVFPQ GPU ADC appears L2-shaped while `_IVFPQIndex` accepts configurable metrics; forced GPU/CPU metric parity must be benchmarked before cosine or inner-product IVFPQ numbers are trusted.
+  - Metadata filtering and soft deletion happen after ANN candidate selection; selective filters and high tombstone ratios can underfill results or disable GPU search by inflating effective `k`.
+  - No-Metal fallback is not proven end-to-end for `_GraphIndex` storage because core vector/graph buffers still require a Metal device when no explicit device is passed.
+  - `_ShardedIndex` is build/search/count only and lacks the persistence/mutation lifecycle expected from a USearch replacement path.
+  - `_StreamingIndex` needs sustained ingest/search/delete/merge benchmarks because merge rebuilds and background merge error surfacing are operational risks.
+- Replacement acceptance bar:
+  - Do not call MetalANNS a USearch replacement until the harness reports recall, p50/p95/p99, QPS, build/add/delete/filter/save/load/compact latency, memory, file size, and integration build status across Mac release, iOS device, and no-Metal/CI fallback lanes.
+  - Require equal or better recall at matched latency on frozen real embeddings and adversarial datasets, not only higher QPS on the current tiny synthetic corpus.
+
+## MetalANNS — Benchmark Harness Production Hardening
+
+> **Status**: COMPLETE
+> **Owner**: Codex
+> **Last Updated**: 2026-05-17
+
+## Task Checklist
+
+- [x] TDD red tests for scale CLI knobs, strict sweep parsing, effective search depth reporting, and release-test flag compatibility.
+- [x] Implement scale/dimension CLI options and richer report metadata without changing benchmark defaults.
+- [x] Make reported `k` semantics honest by recording requested/effective search depths.
+- [x] Fix benchmark executable behavior when imported by SwiftPM release tests.
+- [x] Add first-pass phase/backend/memory metadata that future workload modes can build on.
+- [x] Run targeted tests, release-test verification, and representative release benchmark commands.
+- [x] Document final results and remaining workload-mode gaps.
+
+## Review Results
+
+- Added CLI scale controls:
+  - `--vector-count <n>` for synthetic train corpus size.
+  - `--dimension <n>` for synthetic vector dimension.
+  - Defaults remain `1000 x 128`.
+- Added TDD coverage in benchmark tests for:
+  - parser acceptance of scale knobs;
+  - strict rejection of invalid `--sweep-efsearch` entries;
+  - SwiftPM test-runner skip behavior for `--test-bundle-path`;
+  - synthetic config construction from scale knobs;
+  - JSON/CSV reporting of requested/effective depth and backend path.
+- Made reported `k` semantics explicit:
+  - Console/JSON/CSV now include `requestedK` and `effectiveK`.
+  - `_GraphIndex` and `_IVFPQIndex` benchmark rows now record effective top-k depth when recall@100 forces deeper search.
+- Added first-pass reproducibility metadata:
+  - stable dataset fingerprint;
+  - git commit;
+  - Swift compiler version;
+  - OS version;
+  - CPU/chip string;
+  - Metal device name;
+  - processor counts;
+  - physical memory.
+- Added estimated backend-path reporting:
+  - `_GraphIndex` rows estimate `cpu` vs `hybrid-gpu` from the same threshold policy used by `_GraphIndex`.
+  - IVFPQ rows report `ivfpq-adaptive` until forced CPU/GPU parity modes are implemented.
+- Fixed release-test compatibility:
+  - `MetalANNSBenchmarks` now exits successfully when invoked with SwiftPM test-runner flags such as `--test-bundle-path`.
+  - `swift test -c release --filter BenchmarkReportTests` now exits `0`; Swift Testing still reports zero XCTest cases for this release-filter invocation, but the previous benchmark-CLI failure is removed.
+- Verification:
+  - `swift test --filter 'BenchmarkDatasetTests|BenchmarkReportTests|BenchmarkRunnerSweepTests|IVFPQBenchmarkTests'`
+    - passed, 19 tests.
+  - `swift test -c release --filter BenchmarkReportTests`
+    - passed, no benchmark-CLI argument failure.
+  - `swift build`
+    - passed.
+  - `swift run -c release MetalANNSBenchmarks --vector-count 1200 --dimension 96 --query-count 40 --runs 2 --warmup 1 --json-out /tmp/metalanns-hardening-single.json`
+    - passed; build `236.6 ms`, QPS `2625.48`, requestedK `10`, effectiveK `100`, estimated backend `cpu`, recall@10 `1.000`.
+  - `swift run -c release MetalANNSBenchmarks --ivfpq --vector-count 512 --dimension 32 --query-count 20 --ivfpq-coarse-centroids 32 --ivfpq-iterations 2 --runs 1 --warmup 0 --json-out /tmp/metalanns-hardening-ivfpq.json`
+    - passed; `_GraphIndex` QPS `2922`, `_IVFPQIndex` QPS `6083`, both report requestedK/effectiveK/estimated-backend fields.
+  - `swift run -c release MetalANNSBenchmarks --sweep --sweep-efsearch 16,bad,64`
+    - correctly fails with `Invalid list for --sweep-efsearch`.
+  - `git diff --check`
+    - passed.
+- Remaining workload-mode gaps:
+  - Still missing streaming ingest, sharded lifecycle, forced GPU/CPU parity, and direct USearch comparison.
+  - Backend-path reporting is currently an estimate for `_GraphIndex`; a later pass should instrument actual dispatch path from the index.
+
+## MetalANNS — Benchmark Harness Lifecycle Workloads
+
+> **Status**: COMPLETE
+> **Owner**: Codex
+> **Last Updated**: 2026-05-17
+
+## Task Checklist
+
+- [x] Add TDD parser/report tests for first-class lifecycle workload modes.
+- [x] Implement filtered exact-ground-truth benchmark mode.
+- [x] Implement deletion/compaction benchmark mode.
+- [x] Implement persistence cold-load benchmark mode.
+- [x] Run focused benchmark tests and release smoke commands for each new mode.
+- [x] Document results and remaining sharded/streaming/GPU-parity/USearch-comparator gaps.
+
+## Review Results
+
+- Added first-class benchmark modes:
+  - `--filter-sweep` with `--filter-selectivity <list>` for filtered recall/QPS against filtered exact ground truth.
+  - `--delete-sweep` with `--delete-ratios <list>` for pre-compaction and post-compaction recall/QPS.
+  - `--persistence` for save, load, first loaded query, and warm loaded-query rows.
+- Added strict ratio parsing:
+  - filter selectivity must be finite and in `(0, 1]`.
+  - delete ratios must be finite and in `(0, 1)`.
+- Added lifecycle reporting:
+  - rows include lifecycle labels such as `filter=0.100`, `delete=0.300-precompact`, `delete=0.300-postcompact`, `persistence=first-query`, and `persistence=warm-query`.
+  - lifecycle rows keep `requestedK`, `effectiveK`, recall, query count, latency percentiles, operation timing, and estimated backend path metadata.
+  - `buildTimeMs` now remains construction time; delete, compact, save, load, and first-query timings are reported separately through `operation` and `operationTimeMs`.
+- Addressed code-review reporting findings:
+  - renamed `backendPath` to `estimatedBackendPath` so reports do not imply actual dispatch-path instrumentation that does not exist yet.
+  - replaced the sampled dataset fingerprint with a full SHA-256 over all train vectors, query vectors, ground-truth IDs, dataset shape, neighbor count, and metric.
+- Added robustness coverage:
+  - tiny delete sweeps now preserve at least one active vector instead of allowing a small synthetic corpus to be fully deleted.
+  - filtered/deleted exact ground truth is recomputed per lifecycle condition.
+  - tests now prove full dataset hashes change when non-leading train vectors or ground-truth rows change.
+- Verification:
+  - `swift test --filter 'BenchmarkReportTests|BenchmarkRunnerSweepTests'`
+    - passed, 16 tests.
+  - `swift test --filter 'BenchmarkDatasetTests|BenchmarkReportTests|BenchmarkRunnerSweepTests|IVFPQBenchmarkTests'`
+    - passed, 24 tests.
+  - `swift run -c release MetalANNSBenchmarks --filter-sweep --filter-selectivity 0.5,0.1 --vector-count 300 --dimension 32 --query-count 20 --runs 1 --warmup 0 --json-out /tmp/metalanns-filter.json`
+    - passed; `filter=0.500` recall@10 `1.000`, QPS `3503`; `filter=0.100` recall@10 `0.985`, QPS `8073`.
+  - `swift run -c release MetalANNSBenchmarks --delete-sweep --delete-ratios 0.1,0.3 --vector-count 300 --dimension 32 --query-count 20 --runs 1 --warmup 0 --json-out /tmp/metalanns-delete.json`
+    - passed; precompact/postcompact rows all reported recall@10 `1.000`, QPS range `4201` to `5699`; compact operation times were `130.89 ms` and `101.57 ms`.
+  - `swift run -c release MetalANNSBenchmarks --persistence --vector-count 300 --dimension 32 --query-count 20 --runs 1 --warmup 0 --json-out /tmp/metalanns-persistence.json`
+    - passed; save operation `62.61 ms`, load operation `12.39 ms`, first loaded-query recall@10 `1.000`, warm loaded-query QPS `7708`.
+  - `swift test -c release --filter BenchmarkReportTests`
+    - passed, no benchmark-CLI argument failure.
+  - `swift build`
+    - passed.
+  - `git diff --check`
+    - passed.
+- Remaining replacement-readiness gaps:
+  - Lifecycle modes currently use synthetic datasets only; frozen real-embedding datasets should be supported before replacement claims.
+  - Persistence mode covers normal save/load, first loaded query, and warm loaded query; mmap/disk-backed query paths still need explicit rows.
+  - Still missing streaming ingest, sharded lifecycle, concurrent search/read-write, forced GPU/CPU parity, memory/RSS/file-size reporting, and direct USearch side-by-side comparison.
+
+## MetalANNS — Benchmark Harness Top-Tier Completion
+
+> **Status**: COMPLETE
+> **Owner**: Codex
+> **Last Updated**: 2026-05-17
+
+## Eval Definition
+
+Capability evals:
+- [x] Harness exposes explicit modes for mmap/disk-backed persistence, streaming ingest, sharded lifecycle, concurrent search, and direct USearch comparison or a deterministic unavailable row.
+- [x] Reports include memory and file-size fields without overloading timing columns.
+- [x] Synthetic and dataset-backed modes use the same report schema and include stable SHA-256 dataset identity.
+- [x] New modes have parser/report tests and at least one behavioral regression test.
+- [x] Release smoke commands run for every new mode with JSON output.
+
+Regression evals:
+- [x] Existing single, sweep, IVFPQ, filter, delete, and persistence modes still run.
+- [x] `swift test -c release --filter BenchmarkReportTests` still bypasses benchmark CLI execution.
+- [x] `git diff --check` remains clean.
+
+## Task Checklist
+
+- [x] Research mmap/disk-backed APIs and decide benchmark rows.
+- [x] Research streaming and sharded APIs and decide benchmark rows.
+- [x] Research direct USearch feasibility without destabilizing package resolution.
+- [x] Add TDD parser/report tests for new top-tier modes and memory/file-size fields.
+- [x] Implement memory and file-size report fields.
+- [x] Implement mmap/disk-backed persistence benchmark rows.
+- [x] Implement streaming ingest/search/merge benchmark rows.
+- [x] Implement sharded build/search benchmark rows.
+- [x] Implement concurrent search/read-write benchmark rows.
+- [x] Implement USearch comparator mode or explicit unavailable row with metadata.
+- [x] Run focused tests, release smokes, build, release-test compatibility, and diff checks.
+
+## Review Results
+
+- Added report fields across CSV/JSON:
+  - `rssBeforeBytes`, `rssAfterBytes`, `rssDeltaBytes`, and `fileSizeBytes`.
+  - These are row-level fields with defaults so existing benchmark callers remain source-compatible.
+- Added benchmark-target resource helpers:
+  - current process RSS via `mach_task_basic_info`;
+  - recursive file-size measurement for directory artifacts;
+  - `_GraphIndex` artifact sizing across `.anns`, `.db`, WAL/SHM, and legacy metadata sidecars.
+- Added first-class modes:
+  - `--storage-sweep` with `--storage-modes normal,mmap,disk-backed`.
+  - `--streaming` with `--streaming-batch-size`.
+  - `--sharded` with `--shards` and `--nprobe`.
+  - `--concurrent` with `--concurrency`.
+  - `--gpu-parity` as an explicit unavailable row until `_GraphIndex` exposes actual forced GPU/CPU dispatch instrumentation.
+  - `--usearch-compare` as an explicit unavailable row because USearch is not in this package graph and adding it would reintroduce the known NumKong/CNumKongDispatch resolution risk.
+- Added measured advanced rows:
+  - storage: normal save/load/first-query/warm-query, mmap v3 save/load/first-query/warm-query, disk-backed load/warm-query.
+  - streaming: ingest, flush, and warm-query.
+  - sharded: build and search.
+  - concurrent: concurrent search.
+- Added TDD coverage:
+  - parser tests for all new modes and options.
+  - report tests for memory/file-size keys.
+  - behavioral advanced-mode test that actually builds/runs storage, streaming, sharded, and concurrent rows on a small deterministic corpus.
+- Verification:
+  - `swift test --filter 'BenchmarkReportTests|BenchmarkRunnerSweepTests'`
+    - passed, 18 tests.
+  - `swift test --filter 'BenchmarkDatasetTests|BenchmarkReportTests|BenchmarkRunnerSweepTests|IVFPQBenchmarkTests'`
+    - passed, 26 tests.
+  - `swift run -c release MetalANNSBenchmarks --storage-sweep --storage-modes normal,mmap,disk-backed --vector-count 128 --dimension 16 --query-count 8 --degree 8 --efsearch 64 --runs 1 --warmup 0 --json-out /tmp/metalanns-storage.json`
+    - passed; normal/mmap/disk-backed warm-query rows all reported recall@10 `1.000`.
+  - `swift run -c release MetalANNSBenchmarks --streaming --streaming-batch-size 16 --vector-count 128 --dimension 16 --query-count 8 --degree 8 --efsearch 64 --runs 1 --warmup 0 --json-out /tmp/metalanns-streaming.json`
+    - passed; ingest QPS `1311`, warm-query recall@10 `1.000`.
+  - `swift run -c release MetalANNSBenchmarks --sharded --shards 4 --nprobe 2 --vector-count 128 --dimension 16 --query-count 8 --degree 8 --efsearch 64 --runs 1 --warmup 0 --json-out /tmp/metalanns-sharded.json`
+    - passed; build `29.8 ms`, search recall@10 `1.000`.
+  - `swift run -c release MetalANNSBenchmarks --concurrent --concurrency 4 --vector-count 128 --dimension 16 --query-count 8 --degree 8 --efsearch 64 --runs 1 --warmup 0 --json-out /tmp/metalanns-concurrent.json`
+    - passed; concurrent search recall@10 `1.000`, QPS `6454`.
+  - `swift run -c release MetalANNSBenchmarks --gpu-parity --json-out /tmp/metalanns-gpu-parity.json`
+    - passed; emitted explicit unavailable row and metadata.
+  - `swift run -c release MetalANNSBenchmarks --usearch-compare --json-out /tmp/metalanns-usearch.json`
+    - passed; emitted explicit unavailable row and metadata.
+  - Existing release mode smokes passed:
+    - single: `/tmp/metalanns-single.json`, recall@10 `1.000`.
+    - filter: `/tmp/metalanns-filter-regression.json`, recall@10 `1.000`.
+    - delete: `/tmp/metalanns-delete-regression.json`, pre/postcompact recall@10 `1.000`.
+    - persistence: `/tmp/metalanns-persistence-regression.json`, first/warm query recall@10 `1.000`.
+    - IVFPQ: `/tmp/metalanns-ivfpq-regression.json`, `_GraphIndex` recall@10 `1.000`, `_IVFPQIndex` recall@10 `0.988`.
+  - `swift test -c release --filter BenchmarkReportTests`
+    - passed; SwiftPM still reports zero selected XCTest tests, but benchmark CLI argument bypass remains fixed.
+  - `swift build`
+    - passed.
+  - `git diff --check`
+    - passed.
+- Remaining external blockers:
+  - Direct in-process USearch comparison is intentionally not added to this package because the current package graph has only GRDB, and USearch resolution would introduce the known NumKong/CNumKongDispatch risk. The harness now exposes that as a deterministic availability row instead of hiding it.
+  - Forced GPU/CPU graph-search parity still needs `_GraphIndex` actual dispatch-path instrumentation or a benchmark-only public parity hook. The harness now exposes that as a deterministic availability row instead of publishing estimated parity.
+
+## MetalANNS — Benchmark Numbers Document
+
+> **Status**: COMPLETE
+> **Owner**: Codex
+> **Last Updated**: 2026-05-17
+
+## Task Checklist
+
+- [x] Consolidate the benchmark run numbers into a single Markdown report.
+- [x] Include run configuration, commands, raw JSON location, measured tables, and weakness readout.
+- [x] Keep the canonical report in root `BENCHMARKS.md` so it is easy to find.
+
+## Review Results
+
+- Updated `BENCHMARKS.md` with the full `2026-05-17` benchmark report.
+- Captured graph, IVFPQ, filtering, deletion/compaction, persistence, storage, streaming, sharding, concurrency, GPU-parity availability, and USearch-comparator availability.
+- Documented the primary weak areas: selective filtering recall collapse, limited concurrent scaling, disk-backed query slowdown, IVFPQ recall tradeoff, missing live USearch numbers, and missing GPU parity proof.
+
 ## MetalANNS — Performance Remediation Pass
 
 > **Status**: COMPLETE
