@@ -15,9 +15,10 @@ struct BitonicSortTests {
         let degree = 32
         let graph = try GraphBuffer(capacity: nodeCount, degree: degree, device: context.device)
 
+        var rng = SeededGenerator(state: 42)
         for node in 0..<nodeCount {
-            let ids = (0..<degree).map { _ in UInt32.random(in: 0..<UInt32(nodeCount)) }
-            let distances = (0..<degree).map { _ in Float.random(in: 0...10) }
+            let ids = (0..<degree).map { _ in UInt32.random(in: 0..<UInt32(nodeCount), using: &rng) }
+            let distances = (0..<degree).map { _ in Float.random(in: 0...10, using: &rng) }
             try graph.setNeighbors(of: node, ids: ids, distances: distances)
         }
 

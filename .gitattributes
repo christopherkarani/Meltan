@@ -1,0 +1,5 @@
+# Linguist overrides for GitHub language stats
+*.metal linguist-language=Metal
+docs/assets/*.svg linguist-generated
+*.annbin linguist-generated
+*.db linguist-generated

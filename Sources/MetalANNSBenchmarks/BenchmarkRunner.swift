@@ -218,7 +218,7 @@ struct BenchmarkRunner {
 
     /// Multi-backend comparator.
     ///
-    /// IMPORTANT: `_GraphIndex` does not currently expose a public knob for
+    /// IMPORTANT: `GraphIndex` does not currently expose a public knob for
     /// selecting between its CPU / GPU / GPU-ADC search backends — the choice
     /// is made internally by `shouldUseHybridGPUSearch` based on workload size,
     /// metric, and EF parameters. As a result, this comparator runs the
@@ -374,7 +374,7 @@ struct BenchmarkRunner {
         let top10Count = min(10, maxNeighborCount)
         let top100Count = min(100, maxNeighborCount)
 
-        let index = _GraphIndex(
+        let index = GraphIndex(
             configuration: IndexConfiguration(
                 degree: config.degree,
                 metric: config.metric,
@@ -509,7 +509,7 @@ struct BenchmarkRunner {
     }
 
     private static func benchmarkBatch(
-        index: _GraphIndex,
+        index: GraphIndex,
         queryK: Int,
         top1Count: Int,
         top10Count: Int,
@@ -569,7 +569,7 @@ struct BenchmarkRunner {
     }
 
     private static func benchmarkBatchConcurrent(
-        index: _GraphIndex,
+        index: GraphIndex,
         queryK: Int,
         top1Count: Int,
         top10Count: Int,
@@ -667,7 +667,7 @@ struct BenchmarkRunner {
     }
 
     private static func runOneQuery(
-        index: _GraphIndex,
+        index: GraphIndex,
         query: [Float],
         expected: [UInt32],
         queryK: Int,

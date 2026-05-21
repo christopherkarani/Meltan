@@ -11,7 +11,7 @@ struct DiskBackedTests {
         let vectors = makeVectors(count: 200, dim: dim, seedOffset: 400)
         let ids = (0..<200).map { "v\($0)" }
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96))
         try await index.build(vectors: vectors, ids: ids)
 
         let tempURL = FileManager.default.temporaryDirectory
@@ -25,8 +25,8 @@ struct DiskBackedTests {
 
         try await index.save(to: tempURL)
 
-        let diskBacked = try await Advanced.GraphIndex.loadDiskBacked(from: tempURL)
-        let normal = try await Advanced.GraphIndex.load(from: tempURL)
+        let diskBacked = try await GraphIndex.loadDiskBacked(from: tempURL)
+        let normal = try await GraphIndex.load(from: tempURL)
 
         for query in vectors.prefix(10) {
             let diskResults = try await diskBacked.search(query: query, k: 10)
@@ -46,7 +46,7 @@ struct DiskBackedTests {
         let vectors = makeVectors(count: 100, dim: dim, seedOffset: 401)
         let ids = (0..<100).map { "v\($0)" }
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96))
         try await index.build(vectors: vectors, ids: ids)
 
         let tempURL = FileManager.default.temporaryDirectory
@@ -59,7 +59,7 @@ struct DiskBackedTests {
         }
 
         try await index.saveMmapCompatible(to: tempURL)
-        let diskBacked = try await Advanced.GraphIndex.loadDiskBacked(from: tempURL)
+        let diskBacked = try await GraphIndex.loadDiskBacked(from: tempURL)
 
         let results = try await diskBacked.search(query: vectors[3], k: 10)
         #expect(!results.isEmpty)

@@ -59,6 +59,10 @@ public struct AccelerateBackend: ComputeBackend, Sendable {
         return results
     }
 
+    // FIXME: Blocker — queryBase escapes withUnsafeBufferPointer closure (UB).
+    // The pointer is only valid inside the closure; using it in the loop below
+    // is undefined behavior. Restructure to keep pointer usage inside the
+    // closure or use withUnsafeBytes for the entire computation.
     private func computeCosineDistances(
         query: [Float],
         vectors: UnsafeBufferPointer<Float>,
@@ -118,6 +122,8 @@ public struct AccelerateBackend: ComputeBackend, Sendable {
         }
     }
 
+    // FIXME: Blocker — Same dangling-pointer issue as computeCosineDistances.
+    // queryBase escapes withUnsafeBufferPointer; restructure before production.
     private func computeInnerProductDistances(
         query: [Float],
         vectors: UnsafeBufferPointer<Float>,

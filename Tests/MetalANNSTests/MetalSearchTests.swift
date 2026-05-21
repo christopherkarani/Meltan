@@ -46,7 +46,7 @@ struct MetalSearchTests {
         let degree = 8
         let k = 5
         let ef = 32
-        let vectors = (0..<nodeCount).map { _ in (0..<dim).map { _ in Float.random(in: -1...1) } }
+        let vectors = seededVectors(count: nodeCount, dim: dim)
 
         let context = try MetalContext()
         let vectorBuffer = try VectorBuffer(capacity: nodeCount, dim: dim, device: context.device)
@@ -63,7 +63,7 @@ struct MetalSearchTests {
             maxIterations: 15
         )
 
-        let query = (0..<dim).map { _ in Float.random(in: -1...1) }
+        let query = seededVector(dim: dim)
         let results = try await SearchGPU.search(
             context: context,
             query: query,
@@ -93,7 +93,7 @@ struct MetalSearchTests {
         let k = 10
         let ef = 64
         let queryCount = 10
-        let vectors = (0..<nodeCount).map { _ in (0..<dim).map { _ in Float.random(in: -1...1) } }
+        let vectors = seededVectors(count: nodeCount, dim: dim)
 
         let context = try MetalContext()
         let vectorBuffer = try VectorBuffer(capacity: nodeCount, dim: dim, device: context.device)
@@ -115,7 +115,7 @@ struct MetalSearchTests {
         var totalRecall: Float = 0
 
         for _ in 0..<queryCount {
-            let query = (0..<dim).map { _ in Float.random(in: -1...1) }
+            let query = seededVector(dim: dim)
             let results = try await SearchGPU.search(
                 context: context,
                 query: query,

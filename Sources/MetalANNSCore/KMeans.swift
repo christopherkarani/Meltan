@@ -240,6 +240,9 @@ public enum KMeans {
 
             for c in 0..<k {
                 guard counts[c] > 0 else {
+                    // FIXME: Major — empty cluster leaves stale centroid.
+                    // Standard remedy is to reinitialize (e.g., pick farthest point).
+                    // Stale centroids reduce effective K below requested value.
                     continue
                 }
                 let scale = 1.0 / Float(counts[c])
@@ -367,6 +370,8 @@ private struct RandomNumberGenerator64: RandomNumberGenerator {
     }
 }
 
+// Synchronized via DispatchQueue.concurrentPerform barrier;
+// each worker gets its own state instance.
 private final class LloydWorkerState: @unchecked Sendable {
     var assignments: [Int] = []
     var sums: [Float]

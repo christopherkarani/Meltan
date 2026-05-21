@@ -28,14 +28,9 @@ struct MetalDistanceTests {
         let n = 1000
 
         var vectors = [Float](repeating: 0, count: n * dim)
-        for i in 0..<vectors.count {
-            vectors[i] = Float.random(in: -1...1)
-        }
-
+        fillWithSeededRandom(&vectors)
         var query = [Float](repeating: 0, count: dim)
-        for i in 0..<dim {
-            query[i] = Float.random(in: -1...1)
-        }
+        fillWithSeededRandom(&query, seed: 43)
 
         let cpuBackend = AccelerateBackend()
         let gpuBackend = try MetalBackend()
@@ -76,14 +71,9 @@ struct MetalDistanceTests {
         let n = 1000
 
         var vectors = [Float](repeating: 0, count: n * dim)
-        for i in 0..<vectors.count {
-            vectors[i] = Float.random(in: -1...1)
-        }
-
+        fillWithSeededRandom(&vectors)
         var query = [Float](repeating: 0, count: dim)
-        for i in 0..<dim {
-            query[i] = Float.random(in: -1...1)
-        }
+        fillWithSeededRandom(&query, seed: 43)
 
         let cpuBackend = AccelerateBackend()
         let gpuBackend = try MetalBackend()

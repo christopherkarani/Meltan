@@ -3,6 +3,7 @@ import GRDB
 import MetalANNSCore
 
 /// SQLite-backed persistence layer for index structured data.
+// GRDB handles internal concurrency; this wrapper is immutable after init.
 public final class IndexDatabase: @unchecked Sendable {
     public let pool: DatabasePool
 

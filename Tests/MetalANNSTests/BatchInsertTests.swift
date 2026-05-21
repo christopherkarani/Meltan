@@ -13,7 +13,7 @@ struct BatchInsertTests {
         let insertedVectors = makeVectors(count: 50, dim: dim, seedOffset: 10_000)
         let insertedIDs = (0..<50).map { "new_\($0)" }
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await index.build(vectors: baseVectors, ids: baseIDs)
         try await index.batchInsert(insertedVectors, ids: insertedIDs)
 
@@ -36,11 +36,11 @@ struct BatchInsertTests {
         let insertedVectors = makeVectors(count: 50, dim: dim, seedOffset: 20_000)
         let insertedIDs = (0..<50).map { "new_\($0)" }
 
-        let batchIndex = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
+        let batchIndex = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await batchIndex.build(vectors: baseVectors, ids: baseIDs)
         try await batchIndex.batchInsert(insertedVectors, ids: insertedIDs)
 
-        let sequentialIndex = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
+        let sequentialIndex = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await sequentialIndex.build(vectors: baseVectors, ids: baseIDs)
         for (offset, vector) in insertedVectors.enumerated() {
             try await sequentialIndex.insert(vector, id: insertedIDs[offset])
@@ -58,7 +58,7 @@ struct BatchInsertTests {
     }
 
     private func selfRecall(
-        index: Advanced.GraphIndex,
+        index: GraphIndex,
         vectors: [[Float]],
         ids: [String],
         k: Int

@@ -21,7 +21,7 @@ struct NNDescentCPUTests {
         let n = 50
         let dim = 8
         let degree = 4
-        let vectors = (0..<n).map { _ in (0..<dim).map { _ in Float.random(in: -1...1) } }
+        let vectors = seededVectors(count: n, dim: dim)
 
         let (graph, _) = try await NNDescentCPU.build(
             vectors: vectors,
@@ -41,7 +41,7 @@ struct NNDescentCPUTests {
         let n = 50
         let dim = 8
         let degree = 4
-        let vectors = (0..<n).map { _ in (0..<dim).map { _ in Float.random(in: -1...1) } }
+        let vectors = seededVectors(count: n, dim: dim)
 
         let (graph, _) = try await NNDescentCPU.build(
             vectors: vectors,
@@ -62,7 +62,7 @@ struct NNDescentCPUTests {
         let n = 50
         let dim = 8
         let degree = 4
-        let vectors = (0..<n).map { _ in (0..<dim).map { _ in Float.random(in: -1...1) } }
+        let vectors = seededVectors(count: n, dim: dim)
 
         let (graph, _) = try await NNDescentCPU.build(
             vectors: vectors,

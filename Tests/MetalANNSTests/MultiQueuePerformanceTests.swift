@@ -46,7 +46,7 @@ struct MultiQueuePerformanceTests {
         let vectors = makeVectors(count: 10_000, dim: 32, seedOffset: 0)
         let ids = (0..<vectors.count).map { "v\($0)" }
         let queries = Array(vectors.prefix(200))
-        let index = Advanced.GraphIndex(
+        let index = GraphIndex(
             configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96),
             context: context
         )
@@ -85,7 +85,7 @@ struct MultiQueuePerformanceTests {
 
     private struct SequentialState {
         let centroids: [[Float]]
-        let shards: [Advanced.GraphIndex]
+        let shards: [GraphIndex]
         let nprobe: Int
     }
 
@@ -144,7 +144,7 @@ struct MultiQueuePerformanceTests {
             }
         }
 
-        var builtShards: [Advanced.GraphIndex] = []
+        var builtShards: [GraphIndex] = []
         var builtCentroids: [[Float]] = []
 
         for shardIndex in 0..<effectiveShards {
@@ -158,7 +158,7 @@ struct MultiQueuePerformanceTests {
                 max(1, shardVectors[shardIndex].count - 1)
             )
 
-            let shard = Advanced.GraphIndex(configuration: shardConfiguration)
+            let shard = GraphIndex(configuration: shardConfiguration)
             try await shard.build(vectors: shardVectors[shardIndex], ids: shardIDs[shardIndex])
             builtShards.append(shard)
             builtCentroids.append(kmeans.centroids[shardIndex])

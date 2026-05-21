@@ -9,7 +9,7 @@ struct DeletionTests {
         let dim = 8
         let degree = 4
 
-        let vectors = (0..<n).map { _ in (0..<dim).map { _ in Float.random(in: -1...1) } }
+        let vectors = seededVectors(count: n, dim: dim)
         let (graphData, entryPoint) = try await NNDescentCPU.build(
             vectors: vectors,
             degree: degree,

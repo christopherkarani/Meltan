@@ -11,7 +11,7 @@ struct MmapTests {
         let vectors = makeVectors(count: 200, dim: dim, seedOffset: 0)
         let ids = (0..<200).map { "vec_\($0)" }
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await index.build(vectors: vectors, ids: ids)
 
         let tempURL = FileManager.default.temporaryDirectory
@@ -23,8 +23,8 @@ struct MmapTests {
 
         try await index.saveMmapCompatible(to: tempURL)
 
-        let mmapLoaded = try await Advanced.GraphIndex.loadMmap(from: tempURL)
-        let normalLoaded = try await Advanced.GraphIndex.load(from: tempURL)
+        let mmapLoaded = try await GraphIndex.loadMmap(from: tempURL)
+        let normalLoaded = try await GraphIndex.load(from: tempURL)
 
         for query in vectors.prefix(10) {
             let mmapResults = try await mmapLoaded.search(query: query, k: 10)
@@ -46,7 +46,7 @@ struct MmapTests {
         let vectors = makeVectors(count: 100, dim: dim, seedOffset: 500)
         let ids = (0..<100).map { "vec_\($0)" }
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .l2))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .l2))
         try await index.build(vectors: vectors, ids: ids)
         try await index.delete(id: ids[0])
         try await index.delete(id: ids[1])
@@ -59,8 +59,8 @@ struct MmapTests {
         }
 
         try await index.saveMmapCompatible(to: tempURL)
-        let loaded = try await Advanced.GraphIndex.loadMmap(from: tempURL)
-        let loadedNormal = try await Advanced.GraphIndex.load(from: tempURL)
+        let loaded = try await GraphIndex.loadMmap(from: tempURL)
+        let loadedNormal = try await GraphIndex.load(from: tempURL)
 
         #expect(await loaded.count == 98)
         #expect(await loadedNormal.count == 98)

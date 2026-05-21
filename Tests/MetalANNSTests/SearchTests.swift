@@ -23,7 +23,7 @@ struct SearchTests {
         let dim = 16
         let degree = 8
         let k = 5
-        let vectors = (0..<n).map { _ in (0..<dim).map { _ in Float.random(in: -1...1) } }
+        let vectors = seededVectors(count: n, dim: dim)
 
         let (graphData, entryPoint) = try await NNDescentCPU.build(
             vectors: vectors,
@@ -32,7 +32,7 @@ struct SearchTests {
             maxIterations: 10
         )
 
-        let query = (0..<dim).map { _ in Float.random(in: -1...1) }
+        let query = seededVector(dim: dim)
         let results = try await BeamSearchCPU.search(
             query: query,
             vectors: vectors,
@@ -57,7 +57,7 @@ struct SearchTests {
         let k = 10
         let ef = 64
         let queryCount = 20
-        let vectors = (0..<n).map { _ in (0..<dim).map { _ in Float.random(in: -1...1) } }
+        let vectors = seededVectors(count: n, dim: dim)
 
         let (graphData, entryPoint) = try await NNDescentCPU.build(
             vectors: vectors,
@@ -71,7 +71,7 @@ struct SearchTests {
         var totalRecall: Float = 0
 
         for _ in 0..<queryCount {
-            let query = (0..<dim).map { _ in Float.random(in: -1...1) }
+            let query = seededVector(dim: dim)
             let results = try await BeamSearchCPU.search(
                 query: query,
                 vectors: vectors,

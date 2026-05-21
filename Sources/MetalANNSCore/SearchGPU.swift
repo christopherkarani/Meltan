@@ -2,6 +2,11 @@ import Foundation
 import Metal
 
 public enum SearchGPU {
+    // FIXME: Major — per-iteration GPU dispatch is catastrophically slow.
+    // Each beam-search iteration dispatches one command buffer + allocates buffers.
+    // For ef=200 iterating 100+ times, pure dispatch overhead reaches 5–20 ms.
+    // Should batch all neighbor distances into a single dispatch or use a fully
+    // GPU-resident kernel.
     private static let workspacePool = SearchGPUWorkspacePool()
 
     private struct Candidate {
@@ -235,7 +240,9 @@ public enum SearchGPU {
     }
 }
 
+// Synchronized via NSLock; buffer pool is safe for concurrent acquire/release.
 private final class SearchGPUWorkspacePool: @unchecked Sendable {
+    // Immutable after init; holds only MTLBuffer references.
     final class Workspace: @unchecked Sendable {
         let deviceID: ObjectIdentifier
         let neighborBuffer: MTLBuffer

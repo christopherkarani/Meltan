@@ -61,7 +61,7 @@ public enum IncrementalBuilder {
             }
 
             let existingIDs = graph.neighborIDs(of: neighborIndex)
-            var existingDistances = graph.neighborDistances(of: neighborIndex)
+            let existingDistances = graph.neighborDistances(of: neighborIndex)
 
             if existingIDs.contains(UInt32(internalID)) {
                 continue
@@ -105,6 +105,8 @@ public enum IncrementalBuilder {
                         metric: metric
                     )
 
+                    // FIXME: Major — should verify fallbackDistance < existingDistances[replaceIndex]
+                    // before replacing. Unconditional replacement degrades graph quality over time.
                     var updatedIDs = existingIDs
                     var updatedDistances = existingDistances
                     updatedIDs[replaceIndex] = UInt32(internalID)

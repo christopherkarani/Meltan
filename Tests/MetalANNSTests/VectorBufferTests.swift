@@ -22,7 +22,7 @@ struct VectorBufferTests {
         var vectors = [[Float]]()
 
         for _ in 0..<vectorCount {
-            vectors.append((0..<dim).map { _ in Float.random(in: -1...1) })
+            vectors.append(seededVector(dim: dim))
         }
 
         try buffer.batchInsert(vectors: vectors, startingAt: 0)

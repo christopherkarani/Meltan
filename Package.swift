@@ -33,7 +33,6 @@ let package = Package(
             dependencies: [
                 "MetalANNS",
                 "MetalANNSCore",
-                "MetalANNSBenchmarks",
                 .product(name: "GRDB", package: "GRDB.swift"),
             ],
             swiftSettings: [.swiftLanguageMode(.v6)]

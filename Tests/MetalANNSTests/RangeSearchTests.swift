@@ -11,7 +11,7 @@ struct RangeSearchTests {
         let vectors = makeVectors(count: 100, dim: dim, seedOffset: 100)
         let ids = (0..<100).map { "v\($0)" }
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96))
         try await index.build(vectors: vectors, ids: ids)
 
         let results = try await index.rangeSearch(query: vectors[7], maxDistance: 0.5)
@@ -26,7 +26,7 @@ struct RangeSearchTests {
         let vectors = makeVectors(count: 50, dim: dim, seedOffset: 200)
         let ids = (0..<50).map { "v\($0)" }
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96))
         try await index.build(vectors: vectors, ids: ids)
 
         let target = makeVectors(count: 1, dim: dim, seedOffset: 999)[0]

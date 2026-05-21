@@ -7,7 +7,7 @@ public actor _ShardedIndex {
     private let configuration: IndexConfiguration
 
     private var centroids: [[Float]] = []
-    private var shards: [_GraphIndex] = []
+    private var shards: [GraphIndex] = []
     private var isBuilt = false
 
     public init(
@@ -98,10 +98,10 @@ public actor _ShardedIndex {
             }
         }
 
-        var indexedShards: [(index: Int, shard: _GraphIndex)] = []
+        var indexedShards: [(index: Int, shard: GraphIndex)] = []
         indexedShards.reserveCapacity(effectiveShards)
 
-        try await withThrowingTaskGroup(of: (Int, _GraphIndex).self) { group in
+        try await withThrowingTaskGroup(of: (Int, GraphIndex).self) { group in
             for shardIndex in 0..<effectiveShards {
                 guard !shardVectors[shardIndex].isEmpty else {
                     continue
@@ -113,7 +113,7 @@ public actor _ShardedIndex {
                 shardConfiguration.degree = min(configuration.degree, max(1, shardData.count - 1))
 
                 group.addTask {
-                    let shard = _GraphIndex(
+                    let shard = GraphIndex(
                         configuration: shardConfiguration,
                         context: sharedContext
                     )

@@ -3,6 +3,7 @@ import Metal
 
 /// 1-bit-per-dimension vector storage.
 /// Values are binarized as: value >= 0 -> 1, value < 0 -> 0.
+// Thread-safety: All mutable operations and reads are synchronized via an internal NSLock.
 public final class BinaryVectorBuffer: @unchecked Sendable {
     public let buffer: MTLBuffer
     public let dim: Int

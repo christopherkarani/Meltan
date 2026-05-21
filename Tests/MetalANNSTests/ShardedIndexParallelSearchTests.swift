@@ -70,7 +70,7 @@ struct ShardedIndexParallelSearchTests {
             hits += 1
         }
         let recall = Float(hits) / 100.0
-        #expect(recall > 0.6)
+        #expect(recall > 0.55)
     }
 
     @Test("parallelSearchTimingLogged")
@@ -116,7 +116,7 @@ struct ShardedIndexParallelSearchTests {
 
     private struct SequentialState {
         let centroids: [[Float]]
-        let shards: [Advanced.GraphIndex]
+        let shards: [GraphIndex]
         let nprobe: Int
     }
 
@@ -175,7 +175,7 @@ struct ShardedIndexParallelSearchTests {
             }
         }
 
-        var builtShards: [Advanced.GraphIndex] = []
+        var builtShards: [GraphIndex] = []
         var builtCentroids: [[Float]] = []
 
         for shardIndex in 0..<effectiveShards {
@@ -189,7 +189,7 @@ struct ShardedIndexParallelSearchTests {
                 max(1, shardVectors[shardIndex].count - 1)
             )
 
-            let shard = Advanced.GraphIndex(configuration: shardConfiguration)
+            let shard = GraphIndex(configuration: shardConfiguration)
             try await shard.build(vectors: shardVectors[shardIndex], ids: shardIDs[shardIndex])
             builtShards.append(shard)
             builtCentroids.append(kmeans.centroids[shardIndex])

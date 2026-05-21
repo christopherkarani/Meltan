@@ -83,6 +83,9 @@ public enum GraphRepairer {
             }
         }
 
+        // FIXME: Major — return value lies after rollback.
+        // If diversity drops and we revert, we still return 'updates' (pre-reversion count).
+        // Should return 0 when all changes were rolled back.
         return updates
     }
 
