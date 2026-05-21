@@ -180,7 +180,7 @@ struct NNDescentGPUTests {
         let maxIterations = 15
 
         let vectors = (0..<nodeCount).map { _ in
-            seededVector(dim: dim)
+            (0..<dim).map { _ in Float.random(in: -1...1) }
         }
 
         let context = try MetalContext()
