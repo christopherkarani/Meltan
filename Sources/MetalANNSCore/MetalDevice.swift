@@ -4,6 +4,8 @@ import os.log
 
 private let logger = Logger(subsystem: "com.metalanns", category: "MetalDevice")
 
+// Metal types (MTLDevice, MTLLibrary) are not marked Sendable by Apple,
+// but this type is immutable after init and safe to share across isolation boundaries.
 public final class MetalContext: @unchecked Sendable {
     public let device: MTLDevice
     public let commandQueue: MTLCommandQueue

@@ -14,7 +14,7 @@ struct BatchSearchAdaptiveConcurrencyTests {
             return
         }
 
-        let index = Advanced.GraphIndex(
+        let index = GraphIndex(
             configuration: IndexConfiguration(degree: 8, metric: .cosine),
             context: context
         )
@@ -27,7 +27,7 @@ struct BatchSearchAdaptiveConcurrencyTests {
 
     @Test("cpuModeUsesProcessorCount")
     func cpuModeUsesProcessorCount() async throws {
-        let index = Advanced.GraphIndex(
+        let index = GraphIndex(
             configuration: IndexConfiguration(degree: 8, metric: .cosine),
             context: nil
         )
@@ -41,7 +41,7 @@ struct BatchSearchAdaptiveConcurrencyTests {
         let vectors = makeVectors(count: 600, dim: 32, seedOffset: 0)
         let ids = (0..<vectors.count).map { "v\($0)" }
         let queries = Array(vectors.prefix(100))
-        let index = Advanced.GraphIndex(
+        let index = GraphIndex(
             configuration: IndexConfiguration(degree: 8, metric: .cosine),
             context: nil
         )

@@ -11,7 +11,7 @@ struct CompactionTests {
         let vectors = makeVectors(count: 100, dim: dim, seedOffset: 0)
         let ids = (0..<100).map { "vec_\($0)" }
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await index.build(vectors: vectors, ids: ids)
 
         for id in ids.prefix(50) {
@@ -46,7 +46,7 @@ struct CompactionTests {
         let vectors = makeVectors(count: 200, dim: dim, seedOffset: 50)
         let ids = (0..<200).map { "vec_\($0)" }
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await index.build(vectors: vectors, ids: ids)
 
         let queryVectors = Array(vectors.prefix(10))
@@ -70,7 +70,7 @@ struct CompactionTests {
         let baseIDs = (0..<50).map { "base-\($0)" }
         let numericVector = makeVectors(count: 1, dim: dim, seedOffset: 99_999)[0]
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await index.build(vectors: baseVectors, ids: baseIDs)
         try await index.insert(numericVector, numericID: 42)
         try await index.delete(id: "base-0")
@@ -82,7 +82,7 @@ struct CompactionTests {
     }
 
     private func selfRecall(
-        index: Advanced.GraphIndex,
+        index: GraphIndex,
         vectors: [[Float]],
         ids: [String],
         k: Int

@@ -149,14 +149,19 @@ public enum QueryFilterBuilder {
 }
 
 public struct VectorIndex<Key: IndexKey, State>: Sendable {
-    private let rawIndex: _GraphIndex
+    private let rawIndex: GraphIndex
 
-    private init(rawIndex: _GraphIndex) {
+    private init(rawIndex: GraphIndex) {
         self.rawIndex = rawIndex
     }
 
-    /// Power-user escape hatch.
-    public var advanced: _GraphIndex {
+    /// Power-user escape hatch that exposes the underlying `GraphIndex` actor.
+    ///
+    /// > Warning: Accessing `advanced` bypasses the phantom-type state machine.
+    /// > The caller is responsible for ensuring operations are valid for the
+    /// > current index state (e.g., do not call `search` on an unbuilt index).
+    /// > Prefer the typed API (`build`, `search`, `insert`, etc.) whenever possible.
+    public var advanced: GraphIndex {
         rawIndex
     }
 
@@ -181,10 +186,10 @@ public struct VectorIndex<Key: IndexKey, State>: Sendable {
 
 public extension VectorIndex where State == VectorIndexState.Unbuilt {
     init(configuration: IndexConfiguration = .default) {
-        self.init(rawIndex: _GraphIndex(configuration: configuration))
+        self.init(rawIndex: GraphIndex(configuration: configuration))
     }
 
-    func build(records: [VectorRecord<Key>]) async throws -> VectorIndex<Key, VectorIndexState.Ready> {
+    consuming func build(records: [VectorRecord<Key>]) async throws -> VectorIndex<Key, VectorIndexState.Ready> {
         guard !records.isEmpty else {
             throw ANNSError.constructionFailed("Cannot build index with empty records")
         }
@@ -194,12 +199,12 @@ public extension VectorIndex where State == VectorIndexState.Unbuilt {
         return VectorIndex<Key, VectorIndexState.Ready>(rawIndex: rawIndex)
     }
 
-    func build(vectors: [[Float]], ids: [Key]) async throws -> VectorIndex<Key, VectorIndexState.Ready> {
+    consuming func build(vectors: [[Float]], ids: [Key]) async throws -> VectorIndex<Key, VectorIndexState.Ready> {
         try await build(records: zip(ids, vectors).map { VectorRecord(id: $0.0, vector: $0.1) })
     }
 
     static func load(from url: URL) async throws -> VectorIndex<Key, VectorIndexState.Ready> {
-        let loaded = try await _GraphIndex.load(from: url)
+        let loaded = try await GraphIndex.load(from: url)
         return VectorIndex<Key, VectorIndexState.Ready>(rawIndex: loaded)
     }
 
@@ -207,12 +212,12 @@ public extension VectorIndex where State == VectorIndexState.Unbuilt {
         from url: URL,
         mode: ReadOnlyLoadMode = .mmap
     ) async throws -> VectorIndex<Key, VectorIndexState.ReadOnly> {
-        let loaded: _GraphIndex
+        let loaded: GraphIndex
         switch mode {
         case .mmap:
-            loaded = try await _GraphIndex.loadMmap(from: url)
+            loaded = try await GraphIndex.loadMmap(from: url)
         case .diskBacked:
-            loaded = try await _GraphIndex.loadDiskBacked(from: url)
+            loaded = try await GraphIndex.loadDiskBacked(from: url)
         }
         return VectorIndex<Key, VectorIndexState.ReadOnly>(rawIndex: loaded)
     }

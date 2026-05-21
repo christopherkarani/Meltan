@@ -3,15 +3,20 @@ import Metal
 
 /// GPU-resident adjacency list stored as two flat 2D arrays:
 /// `adjacency[nodeID * degree + slot]` and `distances[nodeID * degree + slot]`.
+///
+/// Thread-safety: All mutable operations (`setNeighbors`, `setCount`) and reads
+/// (`neighborIDs`, `neighborDistances`) are synchronized via an internal `NSLock`.
 public final class GraphBuffer: @unchecked Sendable {
     public let adjacencyBuffer: MTLBuffer
     public let distanceBuffer: MTLBuffer
     public let degree: Int
     public let capacity: Int
-    public private(set) var nodeCount: Int = 0
+    public var nodeCount: Int { lock.withLock { _nodeCount } }
 
     private let idPointer: UnsafeMutablePointer<UInt32>
     private let distPointer: UnsafeMutablePointer<Float>
+    private let lock = NSLock()
+    private var _nodeCount: Int = 0
 
     public init(capacity: Int, degree: Int, device: MTLDevice? = nil) throws {
         guard capacity >= 0, degree > 0 else {
@@ -73,13 +78,13 @@ public final class GraphBuffer: @unchecked Sendable {
         self.distanceBuffer = distanceBuffer
         self.degree = degree
         self.capacity = capacity
-        self.nodeCount = nodeCount
+        self._nodeCount = nodeCount
         self.idPointer = adjacencyBuffer.contents().bindMemory(to: UInt32.self, capacity: max(slotCount, 1))
         self.distPointer = distanceBuffer.contents().bindMemory(to: Float.self, capacity: max(slotCount, 1))
     }
 
     public func setCount(_ newCount: Int) {
-        nodeCount = newCount
+        lock.withLock { _nodeCount = newCount }
     }
 
     public func setNeighbors(of nodeID: Int, ids: [UInt32], distances: [Float]) throws {
@@ -91,21 +96,27 @@ public final class GraphBuffer: @unchecked Sendable {
         }
 
         let base = nodeID * degree
-        for slot in 0..<degree {
-            idPointer[base + slot] = ids[slot]
-            distPointer[base + slot] = distances[slot]
+        lock.withLock {
+            for slot in 0..<degree {
+                idPointer[base + slot] = ids[slot]
+                distPointer[base + slot] = distances[slot]
+            }
         }
     }
 
     public func neighborIDs(of nodeID: Int) -> [UInt32] {
         precondition(nodeID >= 0 && nodeID < capacity, "Node ID out of bounds")
         let base = nodeID * degree
-        return Array(UnsafeBufferPointer(start: idPointer.advanced(by: base), count: degree))
+        return lock.withLock {
+            Array(UnsafeBufferPointer(start: idPointer.advanced(by: base), count: degree))
+        }
     }
 
     public func neighborDistances(of nodeID: Int) -> [Float] {
         precondition(nodeID >= 0 && nodeID < capacity, "Node ID out of bounds")
         let base = nodeID * degree
-        return Array(UnsafeBufferPointer(start: distPointer.advanced(by: base), count: degree))
+        return lock.withLock {
+            Array(UnsafeBufferPointer(start: distPointer.advanced(by: base), count: degree))
+        }
     }
 }

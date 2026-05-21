@@ -184,6 +184,9 @@ public struct ProductQuantizer: Sendable, Codable {
         return vector
     }
 
+    // FIXME: Major — approximateDistance sums sub-distances across PQ sub-spaces.
+    // This decomposition is only mathematically valid for L2/squared-L2.
+    // For cosine or innerProduct metrics the result is silently incorrect.
     public func approximateDistance(query: [Float], codes: [UInt8], metric: Metric) -> Float {
         guard let table = distanceTableFlattened(query: query, metric: metric), codes.count == numSubspaces else {
             return Float.greatestFiniteMagnitude
@@ -248,6 +251,7 @@ public struct ProductQuantizer: Sendable, Codable {
     }
 }
 
+// Synchronized via NSLock; all mutable access is protected.
 private final class ParallelTrainingState: @unchecked Sendable {
     private let lock = NSLock()
     private(set) var codebookSlots: [[[Float]]?]

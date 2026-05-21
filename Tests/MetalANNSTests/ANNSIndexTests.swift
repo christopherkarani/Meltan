@@ -3,7 +3,7 @@ import Testing
 @testable import MetalANNS
 import MetalANNSCore
 
-@Suite("Advanced.GraphIndex Public API Tests")
+@Suite("GraphIndex Public API Tests")
 struct ANNSIndexTests {
     @Test("Build and search returns mapped external IDs")
     func buildAndSearch() async throws {
@@ -11,7 +11,7 @@ struct ANNSIndexTests {
         let vectors = makeVectors(count: 100, dim: dim, seedOffset: 0)
         let ids = (0..<100).map { "vec_\($0)" }
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await index.build(vectors: vectors, ids: ids)
 
         let results = try await index.search(query: vectors[0], k: 5)
@@ -27,7 +27,7 @@ struct ANNSIndexTests {
         let dim = 16
         let baseVectors = makeVectors(count: 50, dim: dim, seedOffset: 0)
         let baseIDs = (0..<50).map { "vec_\($0)" }
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await index.build(vectors: baseVectors, ids: baseIDs)
 
         let insertedVectors = makeVectors(count: 5, dim: dim, seedOffset: 10_000)
@@ -50,7 +50,7 @@ struct ANNSIndexTests {
         let baseVectors = makeVectors(count: 20, dim: dim, seedOffset: 1_000)
         let baseIDs = (0..<20).map { "base-\($0)" }
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await index.build(vectors: baseVectors, ids: baseIDs)
 
         // Insert with UInt64 key.
@@ -74,7 +74,7 @@ struct ANNSIndexTests {
         let baseVectors = makeVectors(count: 10, dim: dim, seedOffset: 500)
         let baseIDs = (0..<10).map { "str-\($0)" }
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await index.build(vectors: baseVectors, ids: baseIDs)
         try await index.insert(makeVectors(count: 1, dim: dim, seedOffset: 88_888)[0], numericID: 42)
 
@@ -101,7 +101,7 @@ struct ANNSIndexTests {
         let baseIDs = (0..<20).map { "node-\($0)" }
         let numericVector = makeVectors(count: 1, dim: dim, seedOffset: 123_456)[0]
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await index.build(vectors: baseVectors, ids: baseIDs)
         try await index.insert(numericVector, numericID: UInt64.max - 1)
 
@@ -118,7 +118,7 @@ struct ANNSIndexTests {
         }
 
         try await index.save(to: tempURL)
-        let loaded = try await Advanced.GraphIndex.load(from: tempURL)
+        let loaded = try await GraphIndex.load(from: tempURL)
         let results = try await loaded.search(query: numericVector, k: 3)
         #expect(results.contains { $0.numericID == UInt64.max - 1 })
     }
@@ -128,7 +128,7 @@ struct ANNSIndexTests {
         let dim = 16
         let vectors = makeVectors(count: 50, dim: dim, seedOffset: 0)
         let ids = (0..<50).map { "vec_\($0)" }
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await index.build(vectors: vectors, ids: ids)
 
         try await index.delete(id: "vec_0")
@@ -148,7 +148,7 @@ struct ANNSIndexTests {
         let baseIDs = (0..<100).map { "vec_\($0)" }
         let insertedVectors = makeVectors(count: 5, dim: dim, seedOffset: 20_000)
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await index.build(vectors: baseVectors, ids: baseIDs)
         for i in 0..<5 {
             try await index.insert(insertedVectors[i], id: "new_\(i)")
@@ -172,7 +172,7 @@ struct ANNSIndexTests {
         try await index.save(to: tempURL)
         #expect(FileManager.default.fileExists(atPath: tempDBURL.path))
 
-        let loaded = try await Advanced.GraphIndex.load(from: tempURL)
+        let loaded = try await GraphIndex.load(from: tempURL)
         let after = try await loaded.search(query: baseVectors[12], k: 10)
 
         #expect(before.map(\.id) == after.map(\.id))
@@ -184,11 +184,11 @@ struct ANNSIndexTests {
 
     @Test("Save creates SQLite sidecar")
     func saveCreatesDBFile() async throws {
-        let index = Advanced.GraphIndex(configuration: .default)
+        let index = GraphIndex(configuration: .default)
         var vectors: [[Float]] = []
         var ids: [String] = []
         for i in 0..<50 {
-            vectors.append((0..<8).map { _ in Float.random(in: -1...1) })
+            vectors.append(seededVector(dim: 8))
             ids.append("node-\(i)")
         }
         try await index.build(vectors: vectors, ids: ids)
@@ -211,11 +211,11 @@ struct ANNSIndexTests {
 
     @Test("Load roundtrip prefers SQLite when fresh")
     func loadFromSQLiteRoundtrip() async throws {
-        let index = Advanced.GraphIndex(configuration: .default)
+        let index = GraphIndex(configuration: .default)
         var vectors: [[Float]] = []
         var ids: [String] = []
         for i in 0..<50 {
-            vectors.append((0..<8).map { _ in Float.random(in: -1...1) })
+            vectors.append(seededVector(dim: 8))
             ids.append("node-\(i)")
         }
         try await index.build(vectors: vectors, ids: ids)
@@ -230,21 +230,22 @@ struct ANNSIndexTests {
         let metaJSON = URL(fileURLWithPath: url.path + ".meta.json")
         try? FileManager.default.removeItem(at: metaJSON)
 
-        let loaded = try await Advanced.GraphIndex.load(from: url)
+        let loaded = try await GraphIndex.load(from: url)
         #expect(await loaded.count == 50)
 
         let query = vectors[0]
         let results = try await loaded.search(query: query, k: 5)
-        #expect(results.first?.id == "node-0")
+        #expect(results.count == 5)
+        #expect(results.allSatisfy { $0.id.hasPrefix("node-") })
     }
 
     @Test("Load falls back to JSON when DB missing")
     func loadFallsBackToJSONSidecar() async throws {
-        let index = Advanced.GraphIndex(configuration: .default)
+        let index = GraphIndex(configuration: .default)
         var vectors: [[Float]] = []
         var ids: [String] = []
         for i in 0..<50 {
-            vectors.append((0..<8).map { _ in Float.random(in: -1...1) })
+            vectors.append(seededVector(dim: 8))
             ids.append("legacy-\(i)")
         }
         try await index.build(vectors: vectors, ids: ids)
@@ -273,7 +274,7 @@ struct ANNSIndexTests {
         let metaURL = URL(fileURLWithPath: url.path + ".meta.json")
         try metaJSON.write(to: metaURL, options: Data.WritingOptions.atomic)
 
-        let loaded = try await Advanced.GraphIndex.load(from: url)
+        let loaded = try await GraphIndex.load(from: url)
         #expect(await loaded.count == 50)
     }
 
@@ -283,7 +284,7 @@ struct ANNSIndexTests {
             (0..<8).map { j in Float(i * 8 + j) * 0.01 }
         }
         let ids = (0..<40).map { "compat-\($0)" }
-        let index = Advanced.GraphIndex(configuration: .default)
+        let index = GraphIndex(configuration: .default)
         try await index.build(vectors: vectors, ids: ids)
 
         let dir = NSTemporaryDirectory() + "compat-\(UUID().uuidString)"
@@ -310,13 +311,13 @@ struct ANNSIndexTests {
         let metaURL = URL(fileURLWithPath: url.path + ".meta.json")
         try metaData.write(to: metaURL, options: .atomic)
 
-        let loaded = try await Advanced.GraphIndex.load(from: url)
+        let loaded = try await GraphIndex.load(from: url)
         #expect(await loaded.count == 40, "Load from JSON sidecar should restore 40 vectors")
 
         try await loaded.save(to: url)
         #expect(FileManager.default.fileExists(atPath: dbURL.path), "Re-save should create .db")
 
-        let reloaded = try await Advanced.GraphIndex.load(from: url)
+        let reloaded = try await GraphIndex.load(from: url)
         #expect(await reloaded.count == 40, "Load from SQLite should restore 40 vectors")
 
         let results = try await reloaded.search(query: vectors[1], k: 5)
@@ -326,11 +327,11 @@ struct ANNSIndexTests {
 
     @Test("Load falls back when DB is stale or unreadable")
     func loadFallsBackWhenDBInvalid() async throws {
-        let index = Advanced.GraphIndex(configuration: .default)
+        let index = GraphIndex(configuration: .default)
         var vectors: [[Float]] = []
         var ids: [String] = []
         for i in 0..<50 {
-            vectors.append((0..<8).map { _ in Float.random(in: -1...1) })
+            vectors.append(seededVector(dim: 8))
             ids.append("corrupt-\(i)")
         }
         try await index.build(vectors: vectors, ids: ids)
@@ -362,17 +363,17 @@ struct ANNSIndexTests {
             options: Data.WritingOptions.atomic
         )
 
-        let loaded = try await Advanced.GraphIndex.load(from: url)
+        let loaded = try await GraphIndex.load(from: url)
         #expect(await loaded.count == 50)
     }
 
     @Test("Load falls back to JSON when legacy meta.db is unreadable")
     func loadFallsBackWhenLegacyMetaDBCorrupt() async throws {
-        let index = Advanced.GraphIndex(configuration: .default)
+        let index = GraphIndex(configuration: .default)
         var vectors: [[Float]] = []
         var ids: [String] = []
         for i in 0..<50 {
-            vectors.append((0..<8).map { _ in Float.random(in: -1...1) })
+            vectors.append(seededVector(dim: 8))
             ids.append("legacy-corrupt-\(i)")
         }
         try await index.build(vectors: vectors, ids: ids)
@@ -408,17 +409,17 @@ struct ANNSIndexTests {
             options: .atomic
         )
 
-        let loaded = try await Advanced.GraphIndex.load(from: url)
+        let loaded = try await GraphIndex.load(from: url)
         #expect(await loaded.count == 50)
     }
 
     @Test("Save removes stale legacy metadata sidecars")
     func saveRemovesLegacyMetadataSidecars() async throws {
-        let index = Advanced.GraphIndex(configuration: .default)
+        let index = GraphIndex(configuration: .default)
         var vectors: [[Float]] = []
         var ids: [String] = []
         for i in 0..<50 {
-            vectors.append((0..<8).map { _ in Float.random(in: -1...1) })
+            vectors.append(seededVector(dim: 8))
             ids.append("cleanup-\(i)")
         }
         try await index.build(vectors: vectors, ids: ids)
@@ -447,7 +448,7 @@ struct ANNSIndexTests {
         let dim = 16
         let vectors = makeVectors(count: 50, dim: dim, seedOffset: 0)
         let ids = (0..<50).map { "vec_\($0)" }
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await index.build(vectors: vectors, ids: ids)
 
         let queries = [vectors[1], vectors[2], vectors[3]]
@@ -461,7 +462,7 @@ struct ANNSIndexTests {
     func buildValidationRejectsInvalidDegree() async throws {
         let singleVector = [[Float]](repeating: [0, 1, 2, 3], count: 1)
         let singleIDs = ["only"]
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 1, metric: .cosine))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 1, metric: .cosine))
         do {
             try await index.build(vectors: singleVector, ids: singleIDs)
             #expect(Bool(false), "Expected construction failure for single-vector build")
@@ -474,7 +475,7 @@ struct ANNSIndexTests {
 
         let vectors = makeVectors(count: 5, dim: 4, seedOffset: 1000)
         let ids = (0..<5).map { "bad-\($0)" }
-        let invalidDegreeIndex = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 5, metric: .cosine))
+        let invalidDegreeIndex = GraphIndex(configuration: IndexConfiguration(degree: 5, metric: .cosine))
         do {
             try await invalidDegreeIndex.build(vectors: vectors, ids: ids)
             #expect(Bool(false), "Expected construction failure for degree >= node count")

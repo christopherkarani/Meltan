@@ -3,6 +3,10 @@ import Metal
 
 /// Thread-safe pool of reusable MTLBuffer triplets for GPU search operations.
 /// Eliminates per-search allocation overhead in FullGPUSearch.
+// Thread-safety: All mutable operations and reads are synchronized via an internal NSLock.
+// 
+// 
+// 
 public final class SearchBufferPool: @unchecked Sendable {
     public struct Buffers: @unchecked Sendable {
         public let queryBuffer: MTLBuffer

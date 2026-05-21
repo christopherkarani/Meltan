@@ -7,7 +7,7 @@ import Testing
 struct GraphPrunerTests {
     private func randomVectors(count: Int, dim: Int) -> [[Float]] {
         (0..<count).map { _ in
-            (0..<dim).map { _ in Float.random(in: -1...1) }
+            seededVector(dim: dim)
         }
     }
 

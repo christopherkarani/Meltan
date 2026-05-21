@@ -76,8 +76,8 @@ public actor _StreamingIndex {
         }
     }
 
-    private var base: _GraphIndex?
-    private var delta: _GraphIndex?
+    private var base: GraphIndex?
+    private var delta: GraphIndex?
     private var mergeTask: Task<Void, Error>?
     private var lastBackgroundMergeError: ANNSError?
     private var _isMerging = false
@@ -515,7 +515,7 @@ public actor _StreamingIndex {
         }
         try validateLoadedMeta(meta)
 
-        let loadedBase = try await _GraphIndex.load(from: url.appendingPathComponent("base.anns"))
+        let loadedBase = try await GraphIndex.load(from: url.appendingPathComponent("base.anns"))
         let streaming = _StreamingIndex(config: meta.config)
         try await streaming.applyLoadedState(base: loadedBase, meta: meta)
         return streaming
@@ -539,7 +539,7 @@ public actor _StreamingIndex {
         return try JSONDecoder().decode(PersistedMeta.self, from: data)
     }
 
-    private func applyLoadedState(base: _GraphIndex, meta: PersistedMeta) async throws {
+    private func applyLoadedState(base: GraphIndex, meta: PersistedMeta) async throws {
         let baseActiveIDs = Set(try await base.streamingActiveExternalIDs())
         let deleted = Set(meta.deletedIDs)
         let pending = Self.pendingRecordsFromMeta(
@@ -774,8 +774,8 @@ public actor _StreamingIndex {
         return (vectors, ids)
     }
 
-    private func buildIndex(vectors: [[Float]], ids: [String]) async throws -> _GraphIndex {
-        let index = _GraphIndex(configuration: adjustedConfiguration(for: vectors.count))
+    private func buildIndex(vectors: [[Float]], ids: [String]) async throws -> GraphIndex {
+        let index = GraphIndex(configuration: adjustedConfiguration(for: vectors.count))
         try await index.build(vectors: vectors, ids: ids)
         if let metrics {
             await index.setMetrics(metrics)
@@ -784,7 +784,7 @@ public actor _StreamingIndex {
         return index
     }
 
-    private func applyStoredMetadata(to index: _GraphIndex, ids: [String]) async throws {
+    private func applyStoredMetadata(to index: GraphIndex, ids: [String]) async throws {
         for id in ids {
             guard let row = metadataByID[id] else {
                 continue

@@ -204,7 +204,7 @@ struct IndexMetricsTests {
         #expect(snapshot.searchCount == 5)
     }
 
-    @Test("Advanced.GraphIndex metrics not persisted")
+    @Test("GraphIndex metrics not persisted")
     func anIndexMetricsNotPersistedAfterLoad() async throws {
         let (index, vectors, _) = try await makeIndexFixture()
         let metrics = IndexMetrics()
@@ -221,7 +221,7 @@ struct IndexMetricsTests {
         }
 
         try await index.save(to: tempURL)
-        let loaded = try await Advanced.GraphIndex.load(from: tempURL)
+        let loaded = try await GraphIndex.load(from: tempURL)
 
         #expect(await loaded.metrics == nil)
     }
@@ -255,10 +255,10 @@ struct IndexMetricsTests {
         count: Int = 50,
         dim: Int = 16,
         seedOffset: Int = 0
-    ) async throws -> (index: Advanced.GraphIndex, vectors: [[Float]], ids: [String]) {
+    ) async throws -> (index: GraphIndex, vectors: [[Float]], ids: [String]) {
         let vectors = makeVectors(count: count, dim: dim, seedOffset: seedOffset)
         let ids = (0..<count).map { "v\($0)" }
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(
+        let index = GraphIndex(configuration: IndexConfiguration(
             degree: 8,
             metric: .cosine,
             hnswConfiguration: .init(enabled: false)

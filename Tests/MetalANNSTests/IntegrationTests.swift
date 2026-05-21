@@ -14,7 +14,7 @@ struct IntegrationTests {
         let vectors = makeVectors(count: baseCount, dim: dim, seedOffset: 0)
         let ids = (0..<baseCount).map { "v_\($0)" }
 
-        let index = Advanced.GraphIndex(
+        let index = GraphIndex(
             configuration: IndexConfiguration(degree: 16, metric: .cosine, maxIterations: 15)
         )
         try await index.build(vectors: vectors, ids: ids)
@@ -57,7 +57,7 @@ struct IntegrationTests {
 
         let baselineLoadedQuery = try await index.search(query: vectors[123], k: 10)
         try await index.save(to: saveURL)
-        let loaded = try await Advanced.GraphIndex.load(from: saveURL)
+        let loaded = try await GraphIndex.load(from: saveURL)
         let loadedQuery = try await loaded.search(query: vectors[123], k: 10)
 
         #expect(baselineLoadedQuery.map(\.id) == loadedQuery.map(\.id))
@@ -82,7 +82,7 @@ struct IntegrationTests {
         let vectors = makeVectors(count: vectorCount, dim: dim, seedOffset: 0)
         let ids = (0..<vectorCount).map { "v_\($0)" }
 
-        let index = Advanced.GraphIndex(
+        let index = GraphIndex(
             configuration: IndexConfiguration(
                 degree: 16,
                 metric: .cosine,

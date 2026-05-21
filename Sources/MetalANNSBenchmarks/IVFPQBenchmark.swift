@@ -61,7 +61,7 @@ public struct IVFPQBenchmark: Sendable {
             warmupRuns: warmups
         )
         let annsRow = BenchmarkReport.Row(
-            label: "_GraphIndex",
+            label: "GraphIndex",
             recallAt10: anns.recallAt10,
             qps: anns.qps,
             buildTimeMs: anns.buildTimeMs,

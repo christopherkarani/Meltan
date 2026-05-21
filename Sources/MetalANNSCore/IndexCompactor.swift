@@ -132,6 +132,8 @@ public enum IndexCompactor {
             }
         }
 
+        // FIXME: Major — MetadataStore is not passed through compaction.
+        // Any metadata associated with surviving nodes is permanently lost.
         return CompactionResult(
             vectors: compactedVectors,
             graph: compactedGraph,

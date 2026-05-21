@@ -11,7 +11,7 @@ struct IncrementalTests {
         let degree = 4
         let metric: Metric = .cosine
 
-        var vectors = (0..<initialCount).map { _ in (0..<dim).map { _ in Float.random(in: -1...1) } }
+        var vectors = seededVectors(count: initialCount, dim: dim)
         let (graphData, entryPoint) = try await NNDescentCPU.build(
             vectors: vectors,
             degree: degree,
@@ -23,7 +23,7 @@ struct IncrementalTests {
         let graphBuffer = try graphBufferFrom(graphData, degree: degree)
 
         for newIndex in 0..<10 {
-            let query = (0..<dim).map { _ in Float.random(in: -1...1) }
+            let query = seededVector(dim: dim, seed: 1000 + UInt64(newIndex))
             let internalID = initialCount + newIndex
 
             try vectorBuffer.insert(vector: query, at: internalID)
@@ -65,7 +65,7 @@ struct IncrementalTests {
         let degree = 8
         let metric: Metric = .cosine
 
-        var vectors = (0..<initialCount).map { _ in (0..<dim).map { _ in Float.random(in: -1...1) } }
+        var vectors = seededVectors(count: initialCount, dim: dim)
         let (initialGraphData, entryPoint) = try await NNDescentCPU.build(
             vectors: vectors,
             degree: degree,
@@ -88,7 +88,7 @@ struct IncrementalTests {
         )
 
         for newIndex in 0..<20 {
-            let newVector = (0..<dim).map { _ in Float.random(in: -1...1) }
+            let newVector = seededVector(dim: dim, seed: 2000 + UInt64(newIndex))
             let internalID = initialCount + newIndex
 
             try vectorBuffer.insert(vector: newVector, at: internalID)

@@ -3,13 +3,21 @@ import Metal
 
 /// GPU-resident flat buffer storing `capacity` vectors of `dim` dimensions.
 /// Layout: vector[i] starts at offset `i * dim` in the underlying Float32 buffer.
+/// GPU-resident flat buffer storing `capacity` vectors of `dim` dimensions.
+/// Layout: vector[i] starts at offset `i * dim` in the underlying Float32 buffer.
+///
+/// Thread-safety: All mutable operations (`insert`, `setCount`) and reads (`vector(at:)`)
+/// are synchronized via an internal `NSLock`. This makes `VectorBuffer` safe for concurrent
+/// access without relying solely on the owning actor's serialization.
 public final class VectorBuffer: @unchecked Sendable {
     public let buffer: MTLBuffer
     public let dim: Int
     public let capacity: Int
-    public private(set) var count: Int = 0
+    public var count: Int { lock.withLock { _count } }
 
     private let rawPointer: UnsafeMutablePointer<Float>
+    private let lock = NSLock()
+    private var _count: Int = 0
 
     public init(capacity: Int, dim: Int, device: MTLDevice? = nil) throws {
         guard capacity >= 0, dim > 0 else {
@@ -34,7 +42,7 @@ public final class VectorBuffer: @unchecked Sendable {
     }
 
     public func setCount(_ newCount: Int) {
-        count = newCount
+        lock.withLock { _count = newCount }
     }
 
     public func insert(vector: [Float], at index: Int) throws {
@@ -46,27 +54,40 @@ public final class VectorBuffer: @unchecked Sendable {
         }
 
         let offset = index * dim
-        vector.withUnsafeBufferPointer { source in
-            guard let baseAddress = source.baseAddress else { return }
-            rawPointer.advanced(by: offset).update(from: baseAddress, count: dim)
+        lock.withLock {
+            vector.withUnsafeBufferPointer { source in
+                guard let baseAddress = source.baseAddress else { return }
+                rawPointer.advanced(by: offset).update(from: baseAddress, count: dim)
+            }
         }
     }
 
     public func batchInsert(vectors: [[Float]], startingAt start: Int) throws {
-        for (offset, vector) in vectors.enumerated() {
-            try insert(vector: vector, at: start + offset)
+        lock.withLock {
+            for (offset, vector) in vectors.enumerated() {
+                let index = start + offset
+                let vecOffset = index * dim
+                vector.withUnsafeBufferPointer { source in
+                    guard let baseAddress = source.baseAddress else { return }
+                    rawPointer.advanced(by: vecOffset).update(from: baseAddress, count: dim)
+                }
+            }
         }
     }
 
     public func vector(at index: Int) -> [Float] {
         precondition(index >= 0 && index < capacity, "Index out of bounds")
         let offset = index * dim
-        let pointer = rawPointer.advanced(by: offset)
-        return Array(UnsafeBufferPointer(start: pointer, count: dim))
+        return lock.withLock {
+            let pointer = rawPointer.advanced(by: offset)
+            return Array(UnsafeBufferPointer(start: pointer, count: dim))
+        }
     }
 
     public var floatPointer: UnsafeBufferPointer<Float> {
-        UnsafeBufferPointer(start: rawPointer, count: capacity * dim)
+        lock.withLock {
+            UnsafeBufferPointer(start: rawPointer, count: capacity * dim)
+        }
     }
 }
 

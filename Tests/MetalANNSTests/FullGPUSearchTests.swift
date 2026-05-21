@@ -4,9 +4,9 @@ import Testing
 
 @Suite("Full GPU Search Tests")
 struct FullGPUSearchTests {
-    private func randomVectors(count: Int, dim: Int) -> [[Float]] {
-        (0..<count).map { _ in
-            (0..<dim).map { _ in Float.random(in: -1...1) }
+    private func randomVectors(count: Int, dim: Int, seed: UInt64 = 42) -> [[Float]] {
+        (0..<count).map { i in
+            seededVector(dim: dim, seed: seed + UInt64(i))
         }
     }
 
@@ -92,7 +92,7 @@ struct FullGPUSearchTests {
             metric: .cosine
         )
 
-        let query = (0..<dim).map { _ in Float.random(in: -1...1) }
+        let query = seededVector(dim: dim, seed: 999)
         let results = try await FullGPUSearch.search(
             context: context,
             query: query,
@@ -135,8 +135,8 @@ struct FullGPUSearchTests {
         var fullRecallTotal: Float = 0
         var hybridRecallTotal: Float = 0
 
-        for _ in 0..<queryCount {
-            let query = (0..<dim).map { _ in Float.random(in: -1...1) }
+        for i in 0..<queryCount {
+            let query = seededVector(dim: dim, seed: 1000 + UInt64(i))
             let exact = exactTopK(query: query, vectors: vectors, k: k)
 
             let fullResults = try await FullGPUSearch.search(

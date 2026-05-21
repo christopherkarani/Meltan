@@ -11,7 +11,7 @@ struct FilteredSearchTests {
         let vectors = makeVectors(count: 100, dim: dim, seedOffset: 0)
         let ids = (0..<100).map { "v\($0)" }
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await index.build(vectors: vectors, ids: ids)
 
         for i in 0..<100 {
@@ -36,7 +36,7 @@ struct FilteredSearchTests {
         let vectors = makeVectors(count: 200, dim: dim, seedOffset: 7)
         let ids = (0..<200).map { "v\($0)" }
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96))
         try await index.build(vectors: vectors, ids: ids)
 
         for i in 0..<200 {
@@ -68,7 +68,7 @@ struct FilteredSearchTests {
         let vectors = makeVectors(count: 100, dim: dim, seedOffset: 21)
         let ids = (0..<100).map { "v\($0)" }
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96))
         try await index.build(vectors: vectors, ids: ids)
 
         for i in 0..<100 {
@@ -115,7 +115,7 @@ struct FilteredSearchTests {
         let vectors = makeVectors(count: 20, dim: dim, seedOffset: 200)
         let ids = (0..<20).map { "v\($0)" }
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 64))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 64))
         try await index.build(vectors: vectors, ids: ids)
 
         let base: Int64 = 9_000_000_000_000_000_000

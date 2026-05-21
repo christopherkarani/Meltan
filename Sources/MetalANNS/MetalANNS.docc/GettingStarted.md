@@ -102,16 +102,16 @@ For fine-grained control, use the ``Advanced`` namespace to work directly with
 low-level index types:
 
 ```swift
-let graph = Advanced.GraphIndex(configuration: .default)
+let graph = GraphIndex(configuration: .default)
 try await graph.build(vectors: vectors, ids: ids)
 let hits = try await graph.search(query: query, k: 10)
 ```
 
-Available advanced types:
+Available types:
 
 | Type | Use Case |
 |---|---|
-| ``Advanced/GraphIndex`` | Raw CAGRA-style directed graph |
+| ``GraphIndex`` | Raw CAGRA-style directed graph |
 | ``Advanced/StreamingIndex`` | Continuous ingest with background merges |
 | ``Advanced/ShardedIndex`` | Large datasets with k-means routing |
 | ``Advanced/IVFPQIndex`` | Product quantization for speed/memory trade-offs |

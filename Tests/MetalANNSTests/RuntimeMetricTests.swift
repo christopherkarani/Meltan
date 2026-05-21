@@ -11,7 +11,7 @@ struct RuntimeMetricTests {
         let vectors = makeVectors(count: 100, dim: dim, seedOffset: 300)
         let ids = (0..<100).map { "v\($0)" }
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96))
         try await index.build(vectors: vectors, ids: ids)
 
         let results = try await index.search(query: vectors[12], k: 10, metric: .l2)
@@ -30,7 +30,7 @@ struct RuntimeMetricTests {
         let vectors = makeVectors(count: 100, dim: dim, seedOffset: 301)
         let ids = (0..<100).map { "v\($0)" }
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96))
         try await index.build(vectors: vectors, ids: ids)
 
         let implicit = try await index.search(query: vectors[20], k: 10)

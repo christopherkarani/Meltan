@@ -227,7 +227,7 @@ struct GraphRepairTests {
         #expect(updates >= 0)
     }
 
-    @Test("Advanced.GraphIndex triggers repair after repairInterval inserts")
+    @Test("GraphIndex triggers repair after repairInterval inserts")
     func indexIntegrationRepair() async throws {
         var config = IndexConfiguration(degree: 8, metric: .cosine)
         config.repairConfiguration = RepairConfiguration(
@@ -236,7 +236,7 @@ struct GraphRepairTests {
             repairIterations: 3
         )
 
-        let index = Advanced.GraphIndex(configuration: config)
+        let index = GraphIndex(configuration: config)
         let initialVectors = (0..<50).map { i in
             (0..<16).map { d in
                 sin(Float(i * 16 + d) * 0.173)
@@ -270,7 +270,7 @@ struct GraphRepairTests {
         var config = IndexConfiguration(degree: 8, metric: .l2)
         config.repairConfiguration = RepairConfiguration(repairInterval: 0, enabled: true)
 
-        let index = Advanced.GraphIndex(configuration: config)
+        let index = GraphIndex(configuration: config)
         let initialVectors = (0..<50).map { i in
             (0..<8).map { d in
                 Float(i * 8 + d) * 0.01

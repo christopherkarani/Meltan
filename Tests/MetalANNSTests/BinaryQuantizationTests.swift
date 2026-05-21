@@ -20,7 +20,7 @@ struct BinaryQuantizationTests {
         let buffer = try BinaryVectorBuffer(capacity: vectorCount, dim: dim)
 
         for index in 0..<vectorCount {
-            let vector = (0..<dim).map { _ in Float.random(in: -1...1) }
+            let vector = seededVector(dim: dim)
             try buffer.insert(vector: vector, at: index)
 
             let unpacked = buffer.vector(at: index)
@@ -67,7 +67,7 @@ struct BinaryQuantizationTests {
             efSearch: 96,
             useBinary: true
         )
-        let index = Advanced.GraphIndex(configuration: config)
+        let index = GraphIndex(configuration: config)
         try await index.build(vectors: vectors, ids: ids)
 
         for query in vectors.prefix(5) {
@@ -89,7 +89,7 @@ struct BinaryQuantizationTests {
             efSearch: 128,
             useBinary: true
         )
-        let index = Advanced.GraphIndex(configuration: config)
+        let index = GraphIndex(configuration: config)
         try await index.build(vectors: vectors, ids: ids)
 
         let quantizedVectors = vectors.map(quantizeToBits)
@@ -119,7 +119,7 @@ struct BinaryQuantizationTests {
             efSearch: 96,
             useBinary: true
         )
-        let index = Advanced.GraphIndex(configuration: config)
+        let index = GraphIndex(configuration: config)
         try await index.build(vectors: vectors, ids: ids)
 
         let query = vectors[7]
@@ -135,7 +135,7 @@ struct BinaryQuantizationTests {
         }
 
         try await index.save(to: fileURL)
-        let loaded = try await Advanced.GraphIndex.load(from: fileURL)
+        let loaded = try await GraphIndex.load(from: fileURL)
         let after = try await loaded.search(query: query, k: 5)
 
         let beforeIDs = before.map(\.id)
@@ -151,7 +151,7 @@ struct BinaryQuantizationTests {
         let vectors = randomBinaryVectors(count: 16, dim: 8).map { Array($0.prefix(7)) }
         let ids = (0..<vectors.count).map { "bad_\($0)" }
         let config = IndexConfiguration(metric: .hamming, useBinary: true)
-        let index = Advanced.GraphIndex(configuration: config)
+        let index = GraphIndex(configuration: config)
 
         do {
             try await index.build(vectors: vectors, ids: ids)
@@ -172,7 +172,7 @@ struct BinaryQuantizationTests {
         let vectors = randomBinaryVectors(count: 32, dim: dim)
         let ids = (0..<vectors.count).map { "v_\($0)" }
 
-        let index = Advanced.GraphIndex(
+        let index = GraphIndex(
             configuration: IndexConfiguration(
                 degree: 8,
                 metric: .cosine,
@@ -199,7 +199,7 @@ struct BinaryQuantizationTests {
         let vectors = randomBinaryVectors(count: 32, dim: 64)
         let ids = (0..<vectors.count).map { "v_\($0)" }
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(metric: .hamming, useBinary: false))
+        let index = GraphIndex(configuration: IndexConfiguration(metric: .hamming, useBinary: false))
         do {
             try await index.build(vectors: vectors, ids: ids)
             #expect(Bool(false), "Expected construction failure for hamming without useBinary")
@@ -217,7 +217,7 @@ struct BinaryQuantizationTests {
     func compactionPreservesBinaryStorageSemantics() async throws {
         let vectors = randomBinaryVectors(count: 120, dim: 64)
         let ids = (0..<vectors.count).map { "v_\($0)" }
-        let index = Advanced.GraphIndex(
+        let index = GraphIndex(
             configuration: IndexConfiguration(degree: 8, metric: .hamming, efSearch: 96, useBinary: true)
         )
         try await index.build(vectors: vectors, ids: ids)
@@ -235,7 +235,7 @@ struct BinaryQuantizationTests {
         }
 
         try await index.save(to: fileURL)
-        let loaded = try await Advanced.GraphIndex.load(from: fileURL)
+        let loaded = try await GraphIndex.load(from: fileURL)
 
         let results = try await loaded.search(query: vectors[10], k: 10)
         #expect(!results.isEmpty)
@@ -245,7 +245,7 @@ struct BinaryQuantizationTests {
     func mmapAndDiskBackedSupportBinaryStorage() async throws {
         let vectors = randomBinaryVectors(count: 100, dim: 64)
         let ids = (0..<vectors.count).map { "v_\($0)" }
-        let index = Advanced.GraphIndex(
+        let index = GraphIndex(
             configuration: IndexConfiguration(degree: 8, metric: .hamming, efSearch: 96, useBinary: true)
         )
         try await index.build(vectors: vectors, ids: ids)
@@ -260,8 +260,8 @@ struct BinaryQuantizationTests {
         }
 
         try await index.saveMmapCompatible(to: fileURL)
-        let mmapLoaded = try await Advanced.GraphIndex.loadMmap(from: fileURL)
-        let diskLoaded = try await Advanced.GraphIndex.loadDiskBacked(from: fileURL)
+        let mmapLoaded = try await GraphIndex.loadMmap(from: fileURL)
+        let diskLoaded = try await GraphIndex.loadDiskBacked(from: fileURL)
         let query = vectors[8]
 
         let mmapResults = try await mmapLoaded.search(query: query, k: 5)

@@ -8,7 +8,7 @@ public struct StreamingConfiguration: Sendable, Codable, Equatable {
     /// Strategy for merging delta into the base index.
     public var mergeStrategy: MergeStrategy
 
-    /// Configuration used for both base and delta _GraphIndex instances.
+    /// Configuration used for both base and delta GraphIndex instances.
     public var indexConfiguration: IndexConfiguration
 
     public static let `default` = StreamingConfiguration(

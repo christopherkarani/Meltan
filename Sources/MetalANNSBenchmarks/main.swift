@@ -235,7 +235,7 @@ func printUsage() {
     print("  --k <n>")
     print("  --concurrency <n>           single concurrency level for normal runs (default 1)")
     print("  --concurrency-sweep <list>  comma-separated concurrency levels (e.g. 1,2,4,8,16); switches mode to concurrency sweep")
-    print("  --compare <list>            comma-separated backend labels; emits one row per label (NOTE: _GraphIndex has no public backend selector — see warning at startup)")
+    print("  --compare <list>            comma-separated backend labels; emits one row per label (NOTE: GraphIndex has no public backend selector — see warning at startup)")
     print("  --ivfpq-subspaces <n>")
     print("  --ivfpq-centroids <n>")
     print("  --ivfpq-coarse-centroids <n>")
@@ -724,13 +724,13 @@ do {
         }
 
     case .compare:
-        // _GraphIndex does not currently expose a public knob for selecting between
+        // GraphIndex does not currently expose a public knob for selecting between
         // its CPU / GPU / GPU-ADC search backends — the choice is made internally
         // based on workload size, metric, and EF parameters. We emit one row per
         // requested label so users can still measure variance, but they should
         // interpret the rows accordingly.
         fputs(
-            "warning: --compare requested but _GraphIndex has no public backend selector. " +
+            "warning: --compare requested but GraphIndex has no public backend selector. " +
             "All rows below run the same auto-selected backend; per-label values reflect " +
             "run-to-run variance, not differences between distinct backends.\n",
             stderr

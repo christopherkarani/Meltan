@@ -10,7 +10,7 @@ struct ConcurrentSearchTests {
         let ids = (0..<100).map { "v_\($0)" }
         let queries = makeVectors(count: 10, dim: 16, seedOffset: 10_000)
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await index.build(vectors: vectors, ids: ids)
 
         var sequential: [[SearchResult]] = []
@@ -35,7 +35,7 @@ struct ConcurrentSearchTests {
         let ids = (0..<200).map { "v_\($0)" }
         let queries = makeVectors(count: 50, dim: 32, seedOffset: 20_000)
 
-        let index = Advanced.GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
+        let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await index.build(vectors: vectors, ids: ids)
 
         let results = try await index.batchSearch(queries: queries, k: 10)

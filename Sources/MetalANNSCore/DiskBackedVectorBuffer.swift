@@ -2,6 +2,10 @@ import Darwin
 import Foundation
 import Metal
 
+// Thread-safety: All mutable operations and reads are synchronized via an internal NSLock.
+// 
+// 
+// 
 public final class DiskBackedVectorBuffer: @unchecked Sendable {
     public let buffer: MTLBuffer
     public let dim: Int

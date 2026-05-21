@@ -96,7 +96,8 @@ struct SIMDDistanceTests {
     }
 
     private func randomVector(dim: Int) -> [Float] {
-        (0..<dim).map { _ in Float.random(in: -0.25...0.25) }
+        var rng = SeededGenerator(state: 42)
+        return (0..<dim).map { _ in Float.random(in: -0.25...0.25, using: &rng) }
     }
 
     private func scalarCosine(_ a: [Float], _ b: [Float]) -> Float {

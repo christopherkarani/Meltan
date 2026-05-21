@@ -611,6 +611,7 @@ public actor _IVFPQIndex: Sendable {
 
 }
 
+// Synchronized via DispatchQueue serial execution.
 private final class ParallelAddPlanningState: @unchecked Sendable {
     private let lock = NSLock()
     private(set) var clusterAssignments: [Int]

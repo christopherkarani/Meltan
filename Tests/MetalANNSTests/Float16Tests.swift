@@ -8,8 +8,8 @@ struct Float16Tests {
     @Test func float16DistanceMatchesFloat32() async throws {
         let dim = 64
         let n = 50
-        let vectors = (0..<n).map { _ in
-            (0..<dim).map { _ in Float.random(in: -1...1) }
+        let vectors = (0..<n).map { i in
+            seededVector(dim: dim, seed: 300 + UInt64(i))
         }
 
         let device = MTLCreateSystemDefaultDevice()
@@ -33,7 +33,7 @@ struct Float16Tests {
             }
         }
 
-        let query = (0..<dim).map { _ in Float.random(in: -1...1) }
+        let query = seededVector(dim: dim, seed: 777)
         for i in 0..<min(10, n) {
             let f32Dist = SIMDDistance.cosine(query, f32Buffer.vector(at: i))
             let f16Dist = SIMDDistance.cosine(query, f16Buffer.vector(at: i))
@@ -46,21 +46,21 @@ struct Float16Tests {
         let dim = 32
         let n = 200
         let k = 10
-        let vectors = (0..<n).map { _ in
-            (0..<dim).map { _ in Float.random(in: -1...1) }
+        let vectors = (0..<n).map { i in
+            seededVector(dim: dim, seed: 400 + UInt64(i))
         }
         let ids = (0..<n).map { "v_\($0)" }
 
         let f32Config = IndexConfiguration(degree: 8, metric: .cosine, useFloat16: false)
-        let f32Index = Advanced.GraphIndex(configuration: f32Config)
+        let f32Index = GraphIndex(configuration: f32Config)
         try await f32Index.build(vectors: vectors, ids: ids)
 
         let f16Config = IndexConfiguration(degree: 8, metric: .cosine, useFloat16: true)
-        let f16Index = Advanced.GraphIndex(configuration: f16Config)
+        let f16Index = GraphIndex(configuration: f16Config)
         try await f16Index.build(vectors: vectors, ids: ids)
 
-        let queries = (0..<5).map { _ in
-            (0..<dim).map { _ in Float.random(in: -1...1) }
+        let queries = (0..<5).map { i in
+            seededVector(dim: dim, seed: 5000 + UInt64(i))
         }
 
         var totalOverlap = 0
