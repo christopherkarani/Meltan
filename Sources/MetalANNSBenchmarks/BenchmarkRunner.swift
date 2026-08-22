@@ -12,6 +12,9 @@ struct BenchmarkRunner {
         var efSearch: Int = 64
         var metric: Metric = .cosine
         var exactSearchMaxVectorCount: Int = 1_000_000
+        /// When true, search latency is measured at exactly `k` results.
+        /// When false (default), searches fetch top-100 so recall@100 stays measurable.
+        var exactTopK: Bool = false
     }
 
     struct Results {
@@ -375,8 +378,8 @@ struct BenchmarkRunner {
         }
 
         let top1Count = min(1, maxNeighborCount)
-        let top10Count = min(10, maxNeighborCount)
-        let top100Count = min(100, maxNeighborCount)
+        let top10Count = config.exactTopK ? min(10, maxNeighborCount, max(config.k, 1)) : min(10, maxNeighborCount)
+        let top100Count = config.exactTopK ? min(100, maxNeighborCount, max(config.k, 1)) : min(100, maxNeighborCount)
 
         let index = GraphIndex(
             configuration: IndexConfiguration(
@@ -394,7 +397,7 @@ struct BenchmarkRunner {
         let buildTimeMs = Double(buildEnd - buildStart) / 1_000_000.0
         let memoryAfterBuild = MemorySnapshot.capture()
 
-        let queryK = max(config.k, top100Count)
+        let queryK = config.exactTopK ? max(config.k, 1) : max(config.k, top100Count)
         let repeats = max(1, repeatRuns)
         let warmups = max(0, warmupRuns)
         let effectiveConcurrency = max(1, concurrency)
