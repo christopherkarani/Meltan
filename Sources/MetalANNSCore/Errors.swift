@@ -7,6 +7,7 @@ public enum ANNSError: Error, Sendable {
     case idNotFound(String)
     case corruptFile(String)
     case constructionFailed(String)
+    case capacityExceeded(capacity: Int)
     case searchFailed(String)
     case indexEmpty
 }

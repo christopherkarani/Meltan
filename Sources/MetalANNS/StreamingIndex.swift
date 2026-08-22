@@ -8,19 +8,13 @@ import MetalANNSCore
 /// `base` index asynchronously (or synchronously for `.blocking` strategy).
 /// Search always probes both shards and also covers pre-build pending inserts.
 public actor _StreamingIndex {
-    private enum MetadataValue: Sendable, Codable {
-        case string(String)
-        case float(Float)
-        case int64(Int64)
-    }
-
     private struct PersistedMeta: Sendable, Codable {
         let config: StreamingConfiguration
         let vectorDimension: Int?
         let allVectorData: [Float]
         let allIDsList: [String]
         let deletedIDs: [String]
-        let metadataByID: [String: [String: MetadataValue]]
+        let metadataByID: [String: [String: StreamingMetadataValue]]
 
         private enum CodingKeys: String, CodingKey {
             case config
@@ -38,7 +32,7 @@ public actor _StreamingIndex {
             allVectorData: [Float],
             allIDsList: [String],
             deletedIDs: [String],
-            metadataByID: [String: [String: MetadataValue]]
+            metadataByID: [String: [String: StreamingMetadataValue]]
         ) {
             self.config = config
             self.vectorDimension = vectorDimension
@@ -54,7 +48,7 @@ public actor _StreamingIndex {
             vectorDimension = try container.decodeIfPresent(Int.self, forKey: .vectorDimension)
             allIDsList = try container.decode([String].self, forKey: .allIDsList)
             deletedIDs = try container.decode([String].self, forKey: .deletedIDs)
-            metadataByID = try container.decode([String: [String: MetadataValue]].self, forKey: .metadataByID)
+            metadataByID = try container.decode([String: [String: StreamingMetadataValue]].self, forKey: .metadataByID)
 
             if let flat = try container.decodeIfPresent([Float].self, forKey: .allVectorData) {
                 allVectorData = flat
@@ -92,7 +86,7 @@ public actor _StreamingIndex {
 
     private var idInBase: Set<String> = []
     private var idInDelta: Set<String> = []
-    private var metadataByID: [String: [String: MetadataValue]] = [:]
+    private var metadataByID: [String: [String: StreamingMetadataValue]] = [:]
     private var vectorDimension: Int?
 
     private let config: StreamingConfiguration
@@ -488,12 +482,12 @@ public actor _StreamingIndex {
                 let dimension = try db.loadVectorDimension()
 
                 let decoder = JSONDecoder()
-                var metadataByID: [String: [String: MetadataValue]] = [:]
+                var metadataByID: [String: [String: StreamingMetadataValue]] = [:]
                 for (id, entries) in allStringMetadata {
-                    var converted: [String: MetadataValue] = [:]
+                    var converted: [String: StreamingMetadataValue] = [:]
                     converted.reserveCapacity(entries.count)
                     for (key, json) in entries {
-                        converted[key] = try decoder.decode(MetadataValue.self, from: Data(json.utf8))
+                        converted[key] = try decoder.decode(StreamingMetadataValue.self, from: Data(json.utf8))
                     }
                     metadataByID[id] = converted
                 }
@@ -637,41 +631,55 @@ public actor _StreamingIndex {
     }
 
     private func flushPendingIntoDelta() async throws {
-        while !pendingVectors.isEmpty {
-            if delta == nil {
-                guard pendingVectors.count >= 2 else {
-                    return
-                }
-                let newDelta = try await buildIndex(vectors: pendingVectors, ids: pendingIDs)
-                delta = newDelta
-                idInDelta = Set(pendingIDs)
-                pendingVectors.removeAll(keepingCapacity: true)
-                pendingIDs.removeAll(keepingCapacity: true)
-                continue
-            }
-
-            guard let delta else {
+        while true {
+            switch StreamingMergePlanner.planDeltaOverflow(captureLedger()) {
+            case .idle:
                 return
-            }
 
-            do {
-                try await delta.batchInsert(pendingVectors, ids: pendingIDs)
-                idInDelta.formUnion(pendingIDs)
+            case .rebuildDelta(let records):
+                let newDelta = try await buildIndex(vectors: records.vectors, ids: records.ids)
+                delta = newDelta
+                idInDelta = Set(records.ids)
                 pendingVectors.removeAll(keepingCapacity: true)
                 pendingIDs.removeAll(keepingCapacity: true)
-            } catch let error as ANNSError {
-                guard case .constructionFailed(let message) = error,
-                    message.contains("Index capacity exceeded")
-                else {
-                    throw error
-                }
 
-                if _isMerging {
+            case .appendToDelta(let records):
+                guard let delta else {
                     return
                 }
-                try await triggerMerge()
+                do {
+                    try await delta.batchInsert(records.vectors, ids: records.ids)
+                    idInDelta.formUnion(records.ids)
+                    pendingVectors.removeAll(keepingCapacity: true)
+                    pendingIDs.removeAll(keepingCapacity: true)
+                } catch let error as ANNSError {
+                    switch StreamingMergePlanner.planOverflowRecovery(for: error, isMerging: _isMerging) {
+                    case .rethrow:
+                        throw error
+                    case .waitForCurrentMerge:
+                        return
+                    case .triggerMerge:
+                        try await triggerMerge()
+                    }
+                }
             }
         }
+    }
+
+    private func captureLedger() -> StreamingLedger {
+        StreamingLedger(
+            pendingVectors: pendingVectors,
+            pendingIDs: pendingIDs,
+            historyVectorData: allVectorData,
+            historyIDs: allIDsList,
+            allIDs: allIDs,
+            deletedIDs: deletedIDs,
+            idInBase: idInBase,
+            idInDelta: idInDelta,
+            metadataByID: metadataByID,
+            vectorDimension: vectorDimension,
+            hasDelta: delta != nil
+        )
     }
 
     private func shouldMerge() async -> Bool {
@@ -729,51 +737,6 @@ public actor _StreamingIndex {
         lastBackgroundMergeError = error
     }
 
-    private func activeRecords(upperBound: Int) -> (vectors: [[Float]], ids: [String]) {
-        let safeUpper = min(upperBound, allIDsList.count)
-        guard safeUpper > 0 else {
-            return ([], [])
-        }
-
-        var vectors: [[Float]] = []
-        var ids: [String] = []
-        vectors.reserveCapacity(safeUpper)
-        ids.reserveCapacity(safeUpper)
-
-        for index in 0..<safeUpper {
-            let id = allIDsList[index]
-            guard !deletedIDs.contains(id) else {
-                continue
-            }
-            ids.append(id)
-            vectors.append(vector(atLogicalIndex: index))
-        }
-        return (vectors, ids)
-    }
-
-    private func activeRecords(in range: Range<Int>) -> (vectors: [[Float]], ids: [String]) {
-        let lower = max(0, range.lowerBound)
-        let upper = min(allIDsList.count, range.upperBound)
-        guard lower < upper else {
-            return ([], [])
-        }
-
-        var vectors: [[Float]] = []
-        var ids: [String] = []
-        vectors.reserveCapacity(upper - lower)
-        ids.reserveCapacity(upper - lower)
-
-        for index in lower..<upper {
-            let id = allIDsList[index]
-            guard !deletedIDs.contains(id) else {
-                continue
-            }
-            ids.append(id)
-            vectors.append(vector(atLogicalIndex: index))
-        }
-        return (vectors, ids)
-    }
-
     private func buildIndex(vectors: [[Float]], ids: [String]) async throws -> GraphIndex {
         let index = GraphIndex(configuration: adjustedConfiguration(for: vectors.count))
         try await index.build(vectors: vectors, ids: ids)
@@ -811,89 +774,97 @@ public actor _StreamingIndex {
         defer { _isMerging = false }
 
         let snapshotCount = allIDsList.count
-        let pendingSnapshot = activeRecords(upperBound: snapshotCount)
+        let prefix = captureLedger().activeRecords(upperBound: snapshotCount)
 
-        let baseSnapshot: (vectors: [[Float]], ids: [String])
+        let baseRecords: StreamingRecordSet
         if let base {
-            baseSnapshot = try await base.streamingActiveRecords()
+            let baseSnapshot = try await base.streamingActiveRecords()
+            baseRecords = StreamingRecordSet(vectors: baseSnapshot.vectors, ids: baseSnapshot.ids)
         } else {
-            baseSnapshot = ([], [])
+            baseRecords = .empty
         }
 
-        var mergedVectors = baseSnapshot.vectors
-        mergedVectors.append(contentsOf: pendingSnapshot.vectors)
-        var mergedIDs = baseSnapshot.ids
-        mergedIDs.append(contentsOf: pendingSnapshot.ids)
+        let plan = StreamingMergePlanner.planMerge(
+            baseSnapshotCount: snapshotCount,
+            baseRecords: baseRecords,
+            prefix: prefix,
+            tailLedger: captureLedger()
+        )
 
-        guard !mergedIDs.isEmpty else {
-            base = nil
-            delta = nil
-            idInBase.removeAll()
-            idInDelta.removeAll()
-            pendingVectors.removeAll(keepingCapacity: true)
-            pendingIDs.removeAll(keepingCapacity: true)
-            allIDsList.removeAll(keepingCapacity: true)
-            allVectorData.removeAll(keepingCapacity: true)
-            lastBackgroundMergeError = nil
-            return
+        switch plan {
+        case .resetToEmpty:
+            applyResetToEmptyPlan()
+
+        case .rebuildDelta(let retained):
+            try await applyRebuildDeltaPlan(retained)
+
+        case .replaceBase(let merged):
+            try await applyReplaceBasePlan(merged, tailStartIndex: snapshotCount)
         }
+    }
 
-        guard mergedIDs.count >= 2 else {
-            base = nil
-            delta = nil
-            idInBase.removeAll()
-            idInDelta.removeAll()
+    private func applyResetToEmptyPlan() {
+        base = nil
+        delta = nil
+        idInBase.removeAll()
+        idInDelta.removeAll()
+        pendingVectors.removeAll(keepingCapacity: true)
+        pendingIDs.removeAll(keepingCapacity: true)
+        allIDsList.removeAll(keepingCapacity: true)
+        allVectorData.removeAll(keepingCapacity: true)
+        lastBackgroundMergeError = nil
+    }
 
-            let tail = activeRecords(in: snapshotCount..<allIDsList.count)
-            var retainedVectors = mergedVectors
-            retainedVectors.append(contentsOf: tail.vectors)
-            var retainedIDs = mergedIDs
-            retainedIDs.append(contentsOf: tail.ids)
+    private func applyRebuildDeltaPlan(_ retained: StreamingRecordSet) async throws {
+        base = nil
+        delta = nil
+        idInBase.removeAll()
+        idInDelta.removeAll()
 
-            allIDsList = retainedIDs
-            allVectorData = retainedVectors.flatMap { $0 }
+        allIDsList = retained.ids
+        allVectorData = retained.vectors.flatMap { $0 }
 
-            pendingVectors.removeAll(keepingCapacity: true)
-            pendingIDs.removeAll(keepingCapacity: true)
-            if retainedIDs.count >= 2 {
-                let newDelta = try await buildIndex(vectors: retainedVectors, ids: retainedIDs)
-                delta = newDelta
-                idInDelta = Set(retainedIDs)
-            } else if retainedIDs.count == 1 {
-                pendingVectors = retainedVectors
-                pendingIDs = retainedIDs
-            }
+        pendingVectors.removeAll(keepingCapacity: true)
+        pendingIDs.removeAll(keepingCapacity: true)
+        try await applyTailDisposition(StreamingMergePlanner.planTailDisposition(retained))
+        lastBackgroundMergeError = nil
+    }
 
-            lastBackgroundMergeError = nil
-            return
-        }
-
-        let newBase = try await buildIndex(vectors: mergedVectors, ids: mergedIDs)
+    private func applyReplaceBasePlan(_ merged: StreamingRecordSet, tailStartIndex: Int) async throws {
+        let newBase = try await buildIndex(vectors: merged.vectors, ids: merged.ids)
 
         base = newBase
-        idInBase = Set(mergedIDs)
+        idInBase = Set(merged.ids)
         delta = nil
         idInDelta.removeAll()
         pendingVectors.removeAll(keepingCapacity: true)
         pendingIDs.removeAll(keepingCapacity: true)
 
-        let tail = activeRecords(in: snapshotCount..<allIDsList.count)
+        let tailLedger = captureLedger()
+        let tail = tailLedger.activeRecords(in: tailStartIndex..<tailLedger.historyIDs.count)
         allIDsList = tail.ids
         allVectorData = tail.vectors.flatMap { $0 }
 
-        if tail.ids.count >= 2 {
-            let newDelta = try await buildIndex(vectors: tail.vectors, ids: tail.ids)
-            delta = newDelta
-            idInDelta = Set(tail.ids)
-        } else if tail.ids.count == 1 {
-            pendingVectors = tail.vectors
-            pendingIDs = tail.ids
-        }
+        try await applyTailDisposition(StreamingMergePlanner.planTailDisposition(tail))
 
         if let metrics {
             await metrics.recordMerge()
         }
         lastBackgroundMergeError = nil
+    }
+
+    private func applyTailDisposition(_ disposition: StreamingTailDisposition) async throws {
+        switch disposition {
+        case .discard:
+            break
+        case .parkPending(let records):
+            pendingVectors = records.vectors
+            pendingIDs = records.ids
+        case .rebuildDelta(let records):
+            let newDelta = try await buildIndex(vectors: records.vectors, ids: records.ids)
+            delta = newDelta
+            idInDelta = Set(records.ids)
+        }
     }
 
     private func pendingSearchResults(
@@ -943,76 +914,26 @@ public actor _StreamingIndex {
             return true
         }
         let row = metadataByID[id] ?? [:]
-        return evaluate(filter: filter, row: row)
-    }
-
-    private func evaluate(filter: _LegacySearchFilter, row: [String: MetadataValue]) -> Bool {
-        switch filter {
-        case .equals(let column, let value):
-            if case .string(let current)? = row[column] {
-                return current == value
+        return filter.evaluate(
+            stringValue: { column in
+                if case .string(let value)? = row[column] {
+                    return value
+                }
+                return nil
+            },
+            floatValue: { column in
+                if case .float(let value)? = row[column] {
+                    return value
+                }
+                return nil
+            },
+            intValue: { column in
+                if case .int64(let value)? = row[column] {
+                    return value
+                }
+                return nil
             }
-            return false
-
-        case .greaterThan(let column, let value):
-            guard let current = numericValue(from: row[column]) else {
-                return false
-            }
-            return current > value
-
-        case .lessThan(let column, let value):
-            guard let current = numericValue(from: row[column]) else {
-                return false
-            }
-            return current < value
-
-        case .greaterThanInt(let column, let value):
-            guard let current = integerValue(from: row[column]) else {
-                return false
-            }
-            return current > value
-
-        case .lessThanInt(let column, let value):
-            guard let current = integerValue(from: row[column]) else {
-                return false
-            }
-            return current < value
-
-        case .in(let column, let values):
-            if case .string(let current)? = row[column] {
-                return values.contains(current)
-            }
-            return false
-
-        case .and(let filters):
-            return filters.allSatisfy { evaluate(filter: $0, row: row) }
-
-        case .or(let filters):
-            return filters.contains { evaluate(filter: $0, row: row) }
-
-        case .not(let inner):
-            return !evaluate(filter: inner, row: row)
-        }
-    }
-
-    private func numericValue(from value: MetadataValue?) -> Float? {
-        switch value {
-        case .float(let value):
-            return value
-        case .int64(let value):
-            return Float(value)
-        case .string, .none:
-            return nil
-        }
-    }
-
-    private func integerValue(from value: MetadataValue?) -> Int64? {
-        switch value {
-        case .int64(let value):
-            return value
-        case .float, .string, .none:
-            return nil
-        }
+        )
     }
 
     private func synchronizeChildMetricsIfNeeded() async {
@@ -1091,18 +1012,6 @@ public actor _StreamingIndex {
         for id in meta.metadataByID.keys where !knownIDs.contains(id) {
             throw ANNSError.corruptFile("Streaming metadata contains row for unknown ID '\(id)'")
         }
-    }
-
-    private func vector(atLogicalIndex index: Int) -> [Float] {
-        guard let dim = vectorDimension else {
-            return []
-        }
-        let start = index * dim
-        let end = start + dim
-        if start < 0 || end > allVectorData.count {
-            return []
-        }
-        return Array(allVectorData[start..<end])
     }
 
     private static func checkedMultiply(_ lhs: Int, _ rhs: Int) throws -> Int {

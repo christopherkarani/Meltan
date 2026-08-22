@@ -32,47 +32,14 @@ public struct MetadataStore: Sendable, Codable {
     }
 
     public func matches(id: UInt32, filter: _LegacySearchFilter) -> Bool {
-        switch filter {
-        case .equals(let column, let value):
-            return stringColumns[column]?[id] == value
-        case .greaterThan(let column, let value):
-            if let floatValue = floatColumns[column]?[id] {
-                return floatValue > value
-            }
-            if let intValue = intColumns[column]?[id] {
-                return Float(intValue) > value
-            }
-            return false
-        case .lessThan(let column, let value):
-            if let floatValue = floatColumns[column]?[id] {
-                return floatValue < value
-            }
-            if let intValue = intColumns[column]?[id] {
-                return Float(intValue) < value
-            }
-            return false
-        case .greaterThanInt(let column, let value):
-            if let intValue = intColumns[column]?[id] {
-                return intValue > value
-            }
-            return false
-        case .lessThanInt(let column, let value):
-            if let intValue = intColumns[column]?[id] {
-                return intValue < value
-            }
-            return false
-        case .in(let column, let values):
-            guard let value = stringColumns[column]?[id] else {
-                return false
-            }
-            return values.contains(value)
-        case .and(let filters):
-            return filters.allSatisfy { matches(id: id, filter: $0) }
-        case .or(let filters):
-            return filters.contains { matches(id: id, filter: $0) }
-        case .not(let inner):
-            return !matches(id: id, filter: inner)
-        }
+        let stringLookup = stringColumns
+        let floatLookup = floatColumns
+        let intLookup = intColumns
+        return filter.evaluate(
+            stringValue: { column in stringLookup[column]?[id] },
+            floatValue: { column in floatLookup[column]?[id] },
+            intValue: { column in intLookup[column]?[id] }
+        )
     }
 
     public func remapped(using mapping: [UInt32: UInt32]) -> MetadataStore {
