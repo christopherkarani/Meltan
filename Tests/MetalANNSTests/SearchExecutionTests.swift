@@ -111,7 +111,7 @@ struct SearchExecutionTests {
             _ = try await GraphSearchEngine.run(
                 request,
                 tiers: [
-                    StubTier("flat", eligible: false, behavior: .results([stubResult(0)]), log: log),
+                    StubTier("flat", eligible: false, behavior: .results([stubResult(0)]), log: log)
                 ],
                 prepareCPU: {
                     await log.append("ladder")
