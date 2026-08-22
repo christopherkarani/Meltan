@@ -41,6 +41,12 @@ public final class VectorBuffer: @unchecked Sendable {
         self.rawPointer = buffer.contents().bindMemory(to: Float.self, capacity: max(elementCount, 1))
     }
 
+    deinit {
+        // Drop cached corpus norms before the MTLBuffer is released so a
+        // recycled buffer address can never be served a predecessor's norms.
+        FlatGPUSearch.invalidateHostNormCache(buffer: buffer)
+    }
+
     public func setCount(_ newCount: Int) {
         lock.withLock { _count = newCount }
     }
@@ -59,6 +65,7 @@ public final class VectorBuffer: @unchecked Sendable {
                 guard let baseAddress = source.baseAddress else { return }
                 rawPointer.advanced(by: offset).update(from: baseAddress, count: dim)
             }
+            FlatGPUSearch.invalidateHostNormCache(buffer: buffer)
         }
     }
 
@@ -72,6 +79,7 @@ public final class VectorBuffer: @unchecked Sendable {
                     rawPointer.advanced(by: vecOffset).update(from: baseAddress, count: dim)
                 }
             }
+            FlatGPUSearch.invalidateHostNormCache(buffer: buffer)
         }
     }
 

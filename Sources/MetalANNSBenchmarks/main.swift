@@ -88,6 +88,9 @@ func makeBenchmarkConfig(
     if let metric = options.metric {
         config.metric = metric
     }
+    if let exactSearchLimit = options.exactSearchLimit {
+        config.exactSearchMaxVectorCount = exactSearchLimit
+    }
 
     return config
 }
@@ -260,6 +263,7 @@ struct ParsedBenchmarkOptions {
     var csvOutPath: String?
     var jsonOutPath: String?
     var queryCount: Int?
+    var vectorCount: Int?
     var seed: Int? = 42
     var repeatRuns: Int = 1
     var warmupRuns: Int = 0
@@ -274,6 +278,7 @@ struct ParsedBenchmarkOptions {
     var concurrencySweepLevels: [Int] = []
     var compareBackendLabels: [String] = []
 
+    var exactSearchLimit: Int?
     var ivfpqSubspaces: Int = 8
     var ivfpqNumCentroids: Int = 256
     var ivfpqNumCoarseCentroids: Int = 256
@@ -314,6 +319,13 @@ func parseOptions(from args: [String]) throws -> ParsedBenchmarkOptions {
                 throw BenchmarkDatasetError.invalidDataset("Invalid --query-count value: \(value)")
             }
             options.queryCount = parsed
+
+        case "--vector-count":
+            let value = try nextValue(for: arg, args: args, index: &index)
+            guard let parsed = Int(value), parsed > 0 else {
+                throw BenchmarkDatasetError.invalidDataset("Invalid --vector-count value: \(value)")
+            }
+            options.vectorCount = parsed
 
         case "--seed":
             let value = try nextValue(for: arg, args: args, index: &index)
@@ -362,6 +374,13 @@ func parseOptions(from args: [String]) throws -> ParsedBenchmarkOptions {
         case "--k":
             let value = try nextValue(for: arg, args: args, index: &index)
             options.k = try parsePositiveInt(arg, value)
+
+        case "--exact-search-limit":
+            let value = try nextValue(for: arg, args: args, index: &index)
+            guard let parsed = Int(value), parsed >= 0 else {
+                throw BenchmarkDatasetError.invalidDataset("Invalid value for \(arg): \(value)")
+            }
+            options.exactSearchLimit = parsed
 
         case "--ivfpq-subspaces":
             let value = try nextValue(for: arg, args: args, index: &index)
@@ -486,7 +505,7 @@ do {
         } else {
             let queryCount = options.queryCount ?? 100
             dataset = BenchmarkDataset.synthetic(
-                trainCount: 1000,
+                trainCount: options.vectorCount ?? 1000,
                 testCount: queryCount,
                 dimension: 128,
                 k: max(100, options.k ?? 10),
@@ -580,7 +599,7 @@ do {
             let base = try loadOrSyntheticDataset(
                 path: nil,
                 baseConfig: BenchmarkRunner.Config(
-                    vectorCount: 1000,
+                    vectorCount: options.vectorCount ?? 1000,
                     dim: 128,
                     queryCount: options.queryCount ?? 100,
                     k: options.k ?? 10,
@@ -664,7 +683,7 @@ do {
             let base = try loadOrSyntheticDataset(
                 path: nil,
                 baseConfig: BenchmarkRunner.Config(
-                    vectorCount: 1000,
+                    vectorCount: options.vectorCount ?? 1000,
                     dim: 128,
                     queryCount: options.queryCount ?? 100,
                     k: options.k ?? 10,
