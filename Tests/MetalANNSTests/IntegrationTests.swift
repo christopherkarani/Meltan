@@ -72,9 +72,7 @@ struct IntegrationTests {
 
     @Test("Recall at 10 over threshold")
     func recallAtTenOverNinetyPercent() async throws {
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            return
-        }
+        _ = try Require.metalDevice()
 
         let vectorCount = 500
         let dim = 32

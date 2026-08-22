@@ -41,10 +41,7 @@ struct MultiQueuePerformanceTests {
         #if targetEnvironment(simulator)
             return
         #else
-            guard let context = makeContextOrSkip() else {
-                return
-            }
-
+            let context = try Require.metalContext()
             let vectors = makeVectors(count: 10_000, dim: 32, seedOffset: 0)
             let ids = (0..<vectors.count).map { "v\($0)" }
             let queries = Array(vectors.prefix(200))
@@ -172,14 +169,6 @@ struct MultiQueuePerformanceTests {
     private func durationSeconds(_ duration: Duration) -> Double {
         let c = duration.components
         return Double(c.seconds) + (Double(c.attoseconds) / 1_000_000_000_000_000_000)
-    }
-
-    private func makeContextOrSkip() -> MetalContext? {
-        do {
-            return try MetalContext()
-        } catch {
-            return nil
-        }
     }
 
     private func makeClusteredVectors(count: Int, dim: Int, clusters: Int) -> [[Float]] {

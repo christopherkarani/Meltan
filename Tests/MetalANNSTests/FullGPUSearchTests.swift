@@ -81,14 +81,10 @@ struct FullGPUSearchTests {
 
     @Test("Full GPU search returns k sorted results")
     func gpuSearchReturnsK() async throws {
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            return
-        }
-
         let nodeCount = 200
         let dim = 16
         let degree = 8
-        let context = try MetalContext()
+        let context = try Require.metalContext()
         let vectors = randomVectors(count: nodeCount, dim: dim)
         let (vectorBuffer, graphBuffer, entryPoint) = try await buildBuffers(
             context: context,
@@ -117,10 +113,6 @@ struct FullGPUSearchTests {
 
     @Test("Full GPU recall matches hybrid recall within tolerance")
     func gpuSearchRecallMatchesHybrid() async throws {
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            return
-        }
-
         let nodeCount = 500
         let dim = 32
         let degree = 16
@@ -128,7 +120,7 @@ struct FullGPUSearchTests {
         let ef = 64
         let queryCount = 20
 
-        let context = try MetalContext()
+        let context = try Require.metalContext()
         let vectors = randomVectors(count: nodeCount, dim: dim)
         let (vectorBuffer, graphBuffer, entryPoint) = try await buildBuffers(
             context: context,
@@ -181,12 +173,10 @@ struct FullGPUSearchTests {
 
     @Test("GPU search works above 4096-node old limit")
     func searchAbove4096NodesReturnsResults() async throws {
-        guard MTLCreateSystemDefaultDevice() != nil else { return }
-
         let nodeCount = 5000
         let dim = 32
         let degree = 16
-        let context = try MetalContext()
+        let context = try Require.metalContext()
         let vectors = randomVectors(count: nodeCount, dim: dim)
         let (vectorBuffer, graphBuffer, entryPoint) = try await buildBuffers(
             context: context,
@@ -212,14 +202,12 @@ struct FullGPUSearchTests {
 
     @Test("GPU search recall matches CPU at small scale")
     func gpuSearchMatchesCPUAtSmallScale() async throws {
-        guard MTLCreateSystemDefaultDevice() != nil else { return }
-
         let nodeCount = 200
         let dim = 32
         let degree = 16
         let k = 10
         let ef = 64
-        let context = try MetalContext()
+        let context = try Require.metalContext()
         let vectors = randomVectors(count: nodeCount, dim: dim)
         let (vectorBuffer, graphBuffer, entryPoint) = try await buildBuffers(
             context: context,

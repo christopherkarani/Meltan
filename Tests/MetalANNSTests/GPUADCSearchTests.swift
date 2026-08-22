@@ -9,10 +9,7 @@ import Testing
 struct GPUADCSearchTests {
     @Test("GPU ADC distances match CPU ADC distances (tolerance 1e-3)")
     func gpuDistancesMatchCPU() async throws {
-        guard let context = makeGPUContextOrSkip() else {
-            return
-        }
-
+        let context = try requireGPUContext()
         let pq = try trainPQ(dim: 64, M: 8)
         let corpus = makeRandomVectors(count: 200, dim: 64, seed: 302)
         let codes = try corpus.map { try pq.encode(vector: $0) }
@@ -34,10 +31,7 @@ struct GPUADCSearchTests {
 
     @Test("Empty code input returns empty distance output")
     func emptyCodesReturnsEmpty() async throws {
-        guard let context = makeGPUContextOrSkip() else {
-            return
-        }
-
+        let context = try requireGPUContext()
         let pq = try trainPQ(dim: 64, M: 8)
         let query = makeRandomVectors(count: 1, dim: 64, seed: 304)[0]
 
@@ -63,10 +57,7 @@ struct GPUADCSearchTests {
 
     @Test("Providing cached flat codebooks matches nil flatCodebooks path")
     func cachedFlatCodebooksSkipsRecomputation() async throws {
-        guard let context = makeGPUContextOrSkip() else {
-            return
-        }
-
+        let context = try requireGPUContext()
         let pq = try trainPQ(dim: 64, M: 8)
         let corpus = makeRandomVectors(count: 200, dim: 64, seed: 305)
         let codes = try corpus.map { try pq.encode(vector: $0) }
@@ -97,9 +88,7 @@ struct GPUADCSearchTests {
 
     @Test("IVFPQ search parity after GPUADCSearch delegation")
     func ivfpqRegressionAfterRewire() async throws {
-        guard makeGPUContextOrSkip() != nil else {
-            return
-        }
+        _ = try requireGPUContext()
 
         let config = IVFPQConfiguration(
             numSubspaces: 8,
@@ -130,10 +119,7 @@ struct GPUADCSearchTests {
 
     @Test("search returns sorted top-k and top-1 matches CPU brute-force ADC")
     func searchReturnsTopK() async throws {
-        guard let context = makeGPUContextOrSkip() else {
-            return
-        }
-
+        let context = try requireGPUContext()
         let pq = try trainPQ(dim: 64, M: 8)
         let corpus = makeRandomVectors(count: 300, dim: 64, seed: 501)
         let codes = try corpus.map { try pq.encode(vector: $0) }
@@ -165,10 +151,7 @@ struct GPUADCSearchTests {
 
     @Test("search returns all results when k exceeds corpus size")
     func searchKLargerThanCorpus() async throws {
-        guard let context = makeGPUContextOrSkip() else {
-            return
-        }
-
+        let context = try requireGPUContext()
         let pq = try trainPQ(dim: 64, M: 8)
         let corpus = makeRandomVectors(count: 5, dim: 64, seed: 503)
         let codes = try corpus.map { try pq.encode(vector: $0) }
@@ -192,10 +175,7 @@ struct GPUADCSearchTests {
 
     @Test("small corpus GPU ADC remains correct")
     func gpuDistancesMatchCPUSmallCorpus() async throws {
-        guard let context = makeGPUContextOrSkip() else {
-            return
-        }
-
+        let context = try requireGPUContext()
         let pq = try trainPQ(dim: 64, M: 8)
         let corpus = makeRandomVectors(count: 5, dim: 64, seed: 701)
         let codes = try corpus.map { try pq.encode(vector: $0) }
@@ -258,10 +238,7 @@ struct GPUADCSearchTests {
 
     @Test("GPU ADC rejects out-of-range PQ code values")
     func rejectsOutOfRangeCodeValues() async throws {
-        guard let context = makeGPUContextOrSkip() else {
-            return
-        }
-
+        let context = try requireGPUContext()
         let pq = ProductQuantizer(
             numSubspaces: 2,
             centroidsPerSubspace: 4,
@@ -290,10 +267,7 @@ struct GPUADCSearchTests {
 
     @Test("GPUADCSearch rejects table that exceeds device threadgroup memory")
     func rejectsDistanceTableExceedingThreadgroupLimit() async throws {
-        guard let context = makeGPUContextOrSkip() else {
-            return
-        }
-
+        let context = try requireGPUContext()
         let maxThreadgroupBytes = context.device.maxThreadgroupMemoryLength
         let m = 256
         let ks = 256
@@ -336,21 +310,12 @@ struct GPUADCSearchTests {
         }
     }
 
-    private func makeGPUContextOrSkip() -> MetalContext? {
+    private func requireGPUContext() throws -> MetalContext {
         #if targetEnvironment(simulator)
             print("Skipping GPU ADC tests on simulator")
-            return nil
+            throw ANNSError.deviceNotSupported
         #else
-            guard MTLCreateSystemDefaultDevice() != nil else {
-                print("Skipping GPU ADC tests: no Metal device available")
-                return nil
-            }
-            do {
-                return try MetalContext()
-            } catch {
-                print("Skipping GPU ADC tests: MetalContext unavailable (\(error))")
-                return nil
-            }
+            try Require.metalContext()
         #endif
     }
 }

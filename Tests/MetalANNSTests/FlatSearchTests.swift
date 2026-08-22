@@ -5,13 +5,6 @@ import Testing
 
 @Suite("Flat Exact GPU Search Tests")
 struct FlatSearchTests {
-    static func makeContext() throws -> MetalContext {
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            throw ANNSError.deviceNotSupported
-        }
-        return try MetalContext()
-    }
-
     func seededVectors(count: Int, dim: Int, seed: UInt64 = 7) -> [[Float]] {
         var state = seed
         func next() -> Float {
@@ -72,7 +65,7 @@ struct FlatSearchTests {
 
     @Test("Exact recall across metrics and sizes")
     func parityAcrossMetricsAndSizes() async throws {
-        let context = try Self.makeContext()
+        let context = try Require.metalContext()
         let dim = 128
 
         for vectorCount in [64, 100, 2048, 2049, 5000] {
@@ -116,7 +109,7 @@ struct FlatSearchTests {
 
     @Test("Batch search matches per-query brute force")
     func batchParity() async throws {
-        let context = try Self.makeContext()
+        let context = try Require.metalContext()
         let dim = 128
         let vectorCount = 4200
         let vectors = seededVectors(count: vectorCount, dim: dim, seed: 31)
@@ -149,7 +142,7 @@ struct FlatSearchTests {
 
     @Test("k greater than corpus size returns all vectors")
     func kExceedsCorpus() async throws {
-        let context = try Self.makeContext()
+        let context = try Require.metalContext()
         let dim = 32
         let vectorCount = 70
         let vectors = seededVectors(count: vectorCount, dim: dim)
@@ -170,7 +163,7 @@ struct FlatSearchTests {
 
     @Test("Norm cache invalidation stays exact after in-place mutation")
     func normCacheInvalidation() async throws {
-        let context = try Self.makeContext()
+        let context = try Require.metalContext()
         let dim = 64
         let vectorCount = 512
         let vectors = seededVectors(count: vectorCount, dim: dim, seed: 13)
@@ -207,10 +200,7 @@ struct FlatSearchTests {
 
     @Test("Eligibility gate excludes unsupported storage")
     func eligibilityGate() async throws {
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            return
-        }
-        let context = try Self.makeContext()
+        let context = try Require.metalContext()
         let smallBuffer = try VectorBuffer(capacity: 8, dim: 16, device: context.device)
         #expect(!FlatGPUSearch.isEligible(vectors: smallBuffer, metric: .cosine, k: 10, maxVectorCount: 1_000_000))
 

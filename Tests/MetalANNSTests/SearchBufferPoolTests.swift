@@ -6,10 +6,7 @@ import Testing
 @Suite("SearchBufferPool Tests")
 struct SearchBufferPoolTests {
     @Test func acquireAndReleaseReturnsSameBuffer() throws {
-        guard let device = MTLCreateSystemDefaultDevice() else {
-            print("Skipping: no Metal device")
-            return
-        }
+        let device = try Require.metalDevice()
         let pool = SearchBufferPool(device: device)
 
         let b1 = try pool.acquire(queryDim: 128, maxK: 10)
@@ -22,10 +19,7 @@ struct SearchBufferPoolTests {
     }
 
     @Test func acquireLargerDimAllocatesNew() throws {
-        guard let device = MTLCreateSystemDefaultDevice() else {
-            print("Skipping: no Metal device")
-            return
-        }
+        let device = try Require.metalDevice()
         let pool = SearchBufferPool(device: device)
 
         let small = try pool.acquire(queryDim: 64, maxK: 10)
@@ -37,10 +31,7 @@ struct SearchBufferPoolTests {
     }
 
     @Test func concurrentAcquireReturnsDistinctBuffers() throws {
-        guard let device = MTLCreateSystemDefaultDevice() else {
-            print("Skipping: no Metal device")
-            return
-        }
+        let device = try Require.metalDevice()
         let pool = SearchBufferPool(device: device)
 
         let b1 = try pool.acquire(queryDim: 128, maxK: 10)
@@ -51,10 +42,7 @@ struct SearchBufferPoolTests {
     }
 
     @Test func releaseEvictsToEntryCap() throws {
-        guard let device = MTLCreateSystemDefaultDevice() else {
-            print("Skipping: no Metal device")
-            return
-        }
+        let device = try Require.metalDevice()
         let pool = SearchBufferPool(
             device: device,
             maxRetainedEntries: 1,
@@ -77,10 +65,7 @@ struct SearchBufferPoolTests {
     }
 
     @Test func releaseEvictsToByteCap() throws {
-        guard let device = MTLCreateSystemDefaultDevice() else {
-            print("Skipping: no Metal device")
-            return
-        }
+        let device = try Require.metalDevice()
         let pool = SearchBufferPool(
             device: device,
             maxRetainedEntries: 8,
@@ -104,10 +89,7 @@ struct SearchBufferPoolTests {
     }
 
     @Test func releaseDropsOversizedBuffer() throws {
-        guard let device = MTLCreateSystemDefaultDevice() else {
-            print("Skipping: no Metal device")
-            return
-        }
+        let device = try Require.metalDevice()
         let pool = SearchBufferPool(
             device: device,
             maxRetainedEntries: 8,
@@ -122,10 +104,7 @@ struct SearchBufferPoolTests {
     }
 
     @Test func acquireAndReleaseVisitedReturnsSameBuffer() throws {
-        guard let device = MTLCreateSystemDefaultDevice() else {
-            print("Skipping: no Metal device")
-            return
-        }
+        let device = try Require.metalDevice()
         let pool = SearchBufferPool(device: device)
 
         let v1 = try pool.acquireVisited(nodeCount: 1000)
@@ -138,10 +117,7 @@ struct SearchBufferPoolTests {
     }
 
     @Test func visitedGenerationsAreMonotonicallyIncreasing() throws {
-        guard let device = MTLCreateSystemDefaultDevice() else {
-            print("Skipping: no Metal device")
-            return
-        }
+        let device = try Require.metalDevice()
         let pool = SearchBufferPool(device: device)
 
         let v1 = try pool.acquireVisited(nodeCount: 100)
@@ -158,10 +134,7 @@ struct SearchBufferPoolTests {
     }
 
     @Test func concurrentVisitedAcquireReturnsDistinctBuffers() throws {
-        guard let device = MTLCreateSystemDefaultDevice() else {
-            print("Skipping: no Metal device")
-            return
-        }
+        let device = try Require.metalDevice()
         let pool = SearchBufferPool(device: device)
 
         let v1 = try pool.acquireVisited(nodeCount: 100)
@@ -175,10 +148,7 @@ struct SearchBufferPoolTests {
     }
 
     @Test func fullGPUSearchCorrectAfterPoolRefactor() async throws {
-        guard let device = MTLCreateSystemDefaultDevice() else {
-            print("Skipping: no Metal device")
-            return
-        }
+        let device = try Require.metalDevice()
         let context = try MetalContext()
 
         let dim = 16

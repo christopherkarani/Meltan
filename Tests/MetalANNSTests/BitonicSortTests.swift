@@ -7,11 +7,7 @@ import Testing
 struct BitonicSortTests {
     @Test("Sort neighbor lists by ascending distance")
     func sortNeighborLists() async throws {
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            return
-        }
-
-        let context = try MetalContext()
+        let context = try Require.metalContext()
         let nodeCount = 100
         let degree = 32
         let graph = try GraphBuffer(capacity: nodeCount, degree: degree, device: context.device)

@@ -10,10 +10,7 @@ struct CommandQueuePoolTests {
         #if targetEnvironment(simulator)
             return
         #else
-            guard let device = MTLCreateSystemDefaultDevice() else {
-                return
-            }
-
+            let device = try Require.metalDevice()
             let pool = try CommandQueuePool(device: device, count: 4)
             let queues = await pool.queues
             #expect(queues.count == 4)
@@ -25,10 +22,7 @@ struct CommandQueuePoolTests {
         #if targetEnvironment(simulator)
             return
         #else
-            guard let device = MTLCreateSystemDefaultDevice() else {
-                return
-            }
-
+            let device = try Require.metalDevice()
             let pool = try CommandQueuePool(device: device, count: 4)
             let ids = await Set(pool.queues.map(ObjectIdentifier.init))
             #expect(ids.count == 4)
@@ -40,10 +34,7 @@ struct CommandQueuePoolTests {
         #if targetEnvironment(simulator)
             return
         #else
-            guard let device = MTLCreateSystemDefaultDevice() else {
-                return
-            }
-
+            let device = try Require.metalDevice()
             let pool = try CommandQueuePool(device: device, count: 4)
             var ids: [ObjectIdentifier] = []
             ids.reserveCapacity(8)
@@ -62,10 +53,7 @@ struct CommandQueuePoolTests {
         #if targetEnvironment(simulator)
             return
         #else
-            guard let device = MTLCreateSystemDefaultDevice() else {
-                return
-            }
-
+            let device = try Require.metalDevice()
             let pool = try CommandQueuePool(device: device, count: 4)
             let picked = try await withThrowingTaskGroup(of: ObjectIdentifier.self) { group in
                 for _ in 0..<8 {

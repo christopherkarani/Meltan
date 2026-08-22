@@ -1,4 +1,37 @@
 import Foundation
+import Metal
+
+@testable import MetalANNSCore
+
+// MARK: - Failing-Loud Environment Requirements
+
+/// Throws `ANNSError.deviceNotSupported` instead of silently passing when required
+/// test infrastructure is missing, so device-less runs FAIL rather than report success.
+enum Require {
+    /// Returns the system default Metal device or throws if none is available.
+    static func metalDevice() throws -> any MTLDevice {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            throw ANNSError.deviceNotSupported
+        }
+        return device
+    }
+
+    /// Returns a live `MetalContext` or throws if no Metal device is available.
+    static func metalContext() throws -> MetalContext {
+        try MetalContext()
+    }
+}
+
+// MARK: - Temporary Directories
+
+/// Creates a unique temporary directory, runs `body`, then removes the directory.
+func withTempDirectory<T>(_ body: (URL) async throws -> T) async throws -> T {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("MetalANNS-tests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    return try await body(directory)
+}
 
 // MARK: - Deterministic Random Generation
 

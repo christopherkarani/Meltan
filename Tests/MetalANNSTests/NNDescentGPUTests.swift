@@ -143,11 +143,7 @@ struct NNDescentGPUTests {
 
     @Test("Random init produces valid graph")
     func randomInitValid() async throws {
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            return
-        }
-
-        let context = try MetalContext()
+        let context = try Require.metalContext()
         let nodeCount = 100
         let degree = 8
         let graph = try GraphBuffer(capacity: nodeCount, degree: degree, device: context.device)
@@ -173,10 +169,6 @@ struct NNDescentGPUTests {
 
     @Test("Full GPU NN-Descent construction recall > 0.80")
     func fullGPUConstruction() async throws {
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            return
-        }
-
         let nodeCount = 200
         let dim = 16
         let degree = 8
@@ -186,7 +178,7 @@ struct NNDescentGPUTests {
             (0..<dim).map { _ in Float.random(in: -1...1) }
         }
 
-        let context = try MetalContext()
+        let context = try Require.metalContext()
         let vectorBuffer = try VectorBuffer(capacity: nodeCount, dim: dim, device: context.device)
         try vectorBuffer.batchInsert(vectors: vectors, startingAt: 0)
         vectorBuffer.setCount(nodeCount)
@@ -239,11 +231,7 @@ struct NNDescentGPUTests {
 
     @Test("Random init rejects nodeCount less than 2")
     func randomInitRejectsSingleNode() async throws {
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            return
-        }
-
-        let context = try MetalContext()
+        let context = try Require.metalContext()
         let graph = try GraphBuffer(capacity: 1, degree: 1, device: context.device)
 
         do {
@@ -263,11 +251,7 @@ struct NNDescentGPUTests {
 
     @Test("local_join updates candidate pairs (float32)")
     func localJoinUpdatesPairwiseFloat32() async throws {
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            return
-        }
-
-        let context = try MetalContext()
+        let context = try Require.metalContext()
         let graph = try makeLocalJoinGraph(context: context)
         let (reverseListBuffer, reverseCountBuffer) = try makeReverseBuffers(context: context)
 
@@ -301,11 +285,7 @@ struct NNDescentGPUTests {
 
     @Test("local_join_f16 updates candidate pairs (float16)")
     func localJoinUpdatesPairwiseFloat16() async throws {
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            return
-        }
-
-        let context = try MetalContext()
+        let context = try Require.metalContext()
         let graph = try makeLocalJoinGraph(context: context)
         let (reverseListBuffer, reverseCountBuffer) = try makeReverseBuffers(context: context)
 

@@ -6,21 +6,12 @@ import Testing
 
 @Suite("GPU-CPU Search Parity")
 struct GPUCPUParityTests {
-    private func makeGPUContextOrSkip() -> MetalContext? {
+    private func requireGPUContext() throws -> MetalContext {
         #if targetEnvironment(simulator)
             print("Skipping GPUCPUParityTests on simulator")
-            return nil
+            throw ANNSError.deviceNotSupported
         #else
-            guard MTLCreateSystemDefaultDevice() != nil else {
-                print("Skipping GPUCPUParityTests: no Metal device available")
-                return nil
-            }
-            do {
-                return try MetalContext()
-            } catch {
-                print("Skipping GPUCPUParityTests: MetalContext unavailable (\(error))")
-                return nil
-            }
+            try Require.metalContext()
         #endif
     }
 
@@ -79,10 +70,7 @@ struct GPUCPUParityTests {
         ef: Int,
         maxIter: Int
     ) async throws {
-        guard let context = makeGPUContextOrSkip() else {
-            return
-        }
-
+        let context = try requireGPUContext()
         var rng = SeededGenerator(state: UInt64(nodeCount) &* UInt64(dim) &+ 7)
         let vectors = (0..<nodeCount).map { _ in
             (0..<dim).map { _ in Float.random(in: -1...1, using: &rng) }
@@ -155,9 +143,7 @@ struct GPUCPUParityTests {
 
     @Test("GPU search deterministic for same query")
     func gpuSearchIsDeterministic() async throws {
-        guard let context = makeGPUContextOrSkip() else {
-            return
-        }
+        let context = try requireGPUContext()
         var rng = SeededGenerator(state: 1234)
 
         let nodeCount = 300

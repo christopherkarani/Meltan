@@ -9,9 +9,7 @@ struct MetalContextMultiQueueTests {
         #if targetEnvironment(simulator)
             return
         #else
-            guard let context = makeContextOrSkip() else {
-                return
-            }
+            let context = try Require.metalContext()
             #expect(await context.queuePool.queues.isEmpty == false)
         #endif
     }
@@ -21,9 +19,7 @@ struct MetalContextMultiQueueTests {
         #if targetEnvironment(simulator)
             return
         #else
-            guard let context = makeContextOrSkip() else {
-                return
-            }
+            let context = try Require.metalContext()
 
             try await withThrowingTaskGroup(of: Void.self) { group in
                 for _ in 0..<2 {
@@ -42,18 +38,8 @@ struct MetalContextMultiQueueTests {
         #if targetEnvironment(simulator)
             return
         #else
-            guard let context = makeContextOrSkip() else {
-                return
-            }
+            let context = try Require.metalContext()
             try await context.execute { _ in }
         #endif
-    }
-
-    private func makeContextOrSkip() -> MetalContext? {
-        do {
-            return try MetalContext()
-        } catch {
-            return nil
-        }
     }
 }

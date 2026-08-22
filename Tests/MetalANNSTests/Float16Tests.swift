@@ -12,7 +12,7 @@ struct Float16Tests {
             seededVector(dim: dim, seed: 300 + UInt64(i))
         }
 
-        let device = MTLCreateSystemDefaultDevice()
+        let device = try Require.metalDevice()
 
         let f32Buffer = try VectorBuffer(capacity: n, dim: dim, device: device)
         try f32Buffer.batchInsert(vectors: vectors, startingAt: 0)

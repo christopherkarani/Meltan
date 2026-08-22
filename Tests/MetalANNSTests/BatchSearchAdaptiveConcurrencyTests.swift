@@ -11,10 +11,7 @@ struct BatchSearchAdaptiveConcurrencyTests {
         #if targetEnvironment(simulator)
             return
         #else
-            guard let context = makeContextOrSkip() else {
-                return
-            }
-
+            let context = try Require.metalContext()
             let index = GraphIndex(
                 configuration: IndexConfiguration(degree: 8, metric: .cosine),
                 context: context
@@ -58,14 +55,6 @@ struct BatchSearchAdaptiveConcurrencyTests {
         #expect(batch.count == sequential.count)
         for i in 0..<batch.count {
             #expect(Set(batch[i].map { $0.id }) == Set(sequential[i].map { $0.id }))
-        }
-    }
-
-    private func makeContextOrSkip() -> MetalContext? {
-        do {
-            return try MetalContext()
-        } catch {
-            return nil
         }
     }
 

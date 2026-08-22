@@ -38,10 +38,6 @@ struct MetalSearchTests {
 
     @Test("GPU beam search returns k results")
     func gpuSearchReturnsK() async throws {
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            return
-        }
-
         let nodeCount = 100
         let dim = 16
         let degree = 8
@@ -49,7 +45,7 @@ struct MetalSearchTests {
         let ef = 32
         let vectors = seededVectors(count: nodeCount, dim: dim)
 
-        let context = try MetalContext()
+        let context = try Require.metalContext()
         let vectorBuffer = try VectorBuffer(capacity: nodeCount, dim: dim, device: context.device)
         try vectorBuffer.batchInsert(vectors: vectors, startingAt: 0)
         vectorBuffer.setCount(nodeCount)
@@ -84,10 +80,6 @@ struct MetalSearchTests {
 
     @Test("GPU search recall > 0.85 on 500 vectors")
     func gpuSearchRecall() async throws {
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            return
-        }
-
         let nodeCount = 500
         let dim = 32
         let degree = 16
@@ -96,7 +88,7 @@ struct MetalSearchTests {
         let queryCount = 10
         let vectors = seededVectors(count: nodeCount, dim: dim)
 
-        let context = try MetalContext()
+        let context = try Require.metalContext()
         let vectorBuffer = try VectorBuffer(capacity: nodeCount, dim: dim, device: context.device)
         try vectorBuffer.batchInsert(vectors: vectors, startingAt: 0)
         vectorBuffer.setCount(nodeCount)

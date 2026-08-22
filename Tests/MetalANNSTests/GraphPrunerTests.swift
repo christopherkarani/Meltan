@@ -111,14 +111,10 @@ struct GraphPrunerTests {
 
     @Test("Pruning reduces redundant edges without over-pruning")
     func pruningReducesRedundancy() async throws {
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            return
-        }
-
         let nodeCount = 200
         let dim = 16
         let degree = 8
-        let context = try MetalContext()
+        let context = try Require.metalContext()
         let vectors = randomVectors(count: nodeCount, dim: dim)
         let (vectorBuffer, graphBuffer, _) = try await buildBuffers(
             context: context,
@@ -151,10 +147,6 @@ struct GraphPrunerTests {
 
     @Test("Pruning preserves recall within 2%")
     func pruningMaintainsRecall() async throws {
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            return
-        }
-
         let nodeCount = 300
         let dim = 32
         let degree = 16
@@ -162,7 +154,7 @@ struct GraphPrunerTests {
         let ef = 64
         let queryCount = 20
 
-        let context = try MetalContext()
+        let context = try Require.metalContext()
         let vectors = randomVectors(count: nodeCount, dim: dim)
         let (vectorBuffer, graphBuffer, entryPoint) = try await buildBuffers(
             context: context,
