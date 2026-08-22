@@ -2,6 +2,139 @@
 
 Last updated: `2026-08-22`
 
+## 2026-08-22 — Production acceptance run (fused exact search, full matrix)
+
+Release-mode verification of the fused exact-search path against the legacy
+graph-traversal baseline (same binary, `--exact-search-limit 0` restores the
+legacy path). Environment: Apple M3 Max, macOS 26.0 (25A354), release build,
+thermal nominal, seeded synthetic data (`--seed 42`, dim 128, degree 32,
+efSearch 64), 200 queries, k measured over top-100 ground truth,
+`--runs 3 --warmup 1`.
+
+### Warm latency + QPS by scale and metric (concurrency = 1)
+
+| Metric | Corpus | Exact QPS | Exact p50 | Exact p95 | Legacy QPS | Legacy p50 | Legacy p95 | Speedup | Recall@10 exact / legacy |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---|
+| cosine | 10k   | 9,393  | 0.09 ms | 0.11 ms | 343   | 2.89 ms  | 3.09 ms  | **27.4x** | 1.000 / 1.000 |
+| cosine | 50k   | 2,450  | 0.34 ms | 0.80 ms | 66    | 14.94 ms | 15.90 ms | **36.9x** | 1.000 / 1.000 |
+| cosine | 100k  | 1,544  | 0.52 ms | 1.16 ms | 32    | 31.00 ms | 31.72 ms | **47.9x** | 1.000 / 0.989 |
+| cosine | 200k  | 1,159  | 0.76 ms | 1.33 ms | 15.8  | 63.26 ms | 64.71 ms | **73.4x** | 1.000 / 0.802 |
+| l2     | 10k   | 9,511  | 0.09 ms | 0.11 ms | 342   | 2.90 ms  | 3.13 ms  | **27.8x** | 1.000 / 1.000 |
+| l2     | 50k   | 1,997  | 0.36 ms | 1.16 ms | 65    | 15.23 ms | 16.01 ms | **30.5x** | 1.000 / 1.000 |
+| l2     | 100k  | 1,728  | 0.49 ms | 1.01 ms | 32    | 31.09 ms | 32.02 ms | **53.9x** | 1.000 / 0.988 |
+| l2     | 200k  | 1,127  | 0.79 ms | 1.36 ms | 15.8  | 63.21 ms | 65.16 ms | **71.5x** | 1.000 / 0.805 |
+| dot    | 10k   | 9,745  | 0.09 ms | 0.11 ms | 333   | 2.99 ms  | 3.18 ms  | **29.3x** | 1.000 / 1.000 |
+| dot    | 50k   | 2,442  | 0.34 ms | 0.75 ms | 69    | 14.36 ms | 15.04 ms | **35.2x** | 1.000 / 0.693 |
+| dot    | 100k  | 1,536  | 0.54 ms | 1.14 ms | 36    | 27.48 ms | 28.52 ms | **42.4x** | 1.000 / 0.481 |
+| dot    | 200k  | 1,116  | 0.79 ms | 1.38 ms | 19.4  | 51.48 ms | 53.15 ms | **57.6x** | 1.000 / 0.150 |
+
+Geometric-mean speedup across all 12 cells: **~41x**. The exact path holds
+recall@10 = recall@100 = 1.000 in every cell; the legacy graph path loses
+recall as graphs deepen (0.15 at 200k dot-product) while also running 16-74x
+slower.
+
+### Throughput under concurrency (cosine)
+
+| Corpus | Path | c=1 | c=8 | c=16 |
+|---|---|---:|---:|---:|
+| 50k  | exact  | 2,251 QPS | 11,047 QPS | 11,941 QPS |
+| 50k  | legacy | 64 QPS    | 71 QPS     | -          |
+| 200k | exact  | 1,017 QPS | 2,353 QPS  | 2,286 QPS  |
+| 200k | legacy | 15.8 QPS  | 16.6 QPS   | -          |
+
+Steady-state QPS advantage at concurrency 8: **156x** (50k) and **142x**
+(200k). Recall stays 1.000 for the exact path at every concurrency level.
+
+### Cold vs warm
+
+- Exact path cold first query: 0.9-3.2 ms across scales (pipeline compile +
+  first dispatch); warm steady means 0.09 ms (10k) to 0.85 ms (200k).
+- Legacy path cold first query: 85 ms (10k) to 4.7 s (200k) due to lazy HNSW
+  construction on first search; warm steady means 2.9 ms to 63 ms.
+
+### Memory (post-build resident delta / peak resident after queries)
+
+| Corpus | Index resident | Peak (exact) | Peak (legacy) |
+|---|---:|---:|---:|
+| 50k  | ~286 MB | 112 MB | 149 MB |
+| 100k | ~372 MB | 212 MB | 281 MB |
+| 200k | ~507 MB | 396 MB | 537 MB |
+
+The exact path peaks lower because it never materializes the lazy HNSW layer
+during queries.
+
+### Build / update costs (`--ops`, cosine, dim 128)
+
+| Stage | n=10k (+1k inserts, 500 deletes) | n=100k (+5k inserts, 2500 deletes) |
+|---|---:|---:|
+| build | 1.71 s (0.171 ms/vec) | 3.66 s (0.037 ms/vec) |
+| batchInsert | 1.0-1.9 ms/vec | 1.74 ms/vec |
+| delete (soft) | 0.9 us/op | 0.2 us/op |
+| compact | ~1.0-1.2 s | 3.77 s |
+| save (mmap fmt) | 57-65 ms (8.0 MB) | 363 ms (78.2 MB) |
+| load (full memory) | 429 ms | 2.25 s |
+| loadMmap | 440 ms | 2.06 s |
+
+Recall@10 spot checks against brute force are 1.000 at every lifecycle stage:
+before updates, after inserts, after deletes, after compaction, and after both
+reload modes. Post-delete/post-reload exactness is guaranteed by fetching
+top-(k+deletedCount) flat candidates and filtering soft-deleted rows (see
+correctness fixes below).
+
+### Correctness fixes shipped with this verification
+
+1. **Exactness under soft deletions**: `GraphIndex.search`/`batchSearch`
+   previously skipped the fused exact path whenever any deletion existed,
+   silently degrading to approximate graph traversal after reload. The gate
+   now scans top-(k+deletedCount) candidates and filters deleted rows, which
+   is provably the true top-k survivors.
+2. **Mmap-loaded indexes regain exact search**: Float32-mode mmap storage is
+   now flat-scan eligible (its zero-copy buffer already has the row-major
+   Float32 layout the kernel reads). Float16/binary/disk-backed staging remain
+   excluded.
+3. **Deterministic GPU-tier tests**: `FlatGPUSearch.search/batchSearch` accept
+   an internal `tierOverride` so regression tests can force the Metal kernel on
+   small corpora without mutating shared static state.
+
+### Tests added
+
+`Tests/MetalANNSTests/ExactSearchIntegrationTests.swift`: GPU-tier kernel
+exactness across metrics and chunk boundaries, fallback behavior when the
+exact path is disabled or over its runtime limit, and a lifecycle test proving
+recall stays exactly 1.0 through inserts, deletes, compaction, and both reload
+modes. `DiskBackedTests` now asserts recall-vs-brute-force instead of strict
+equality between two independently built graph traversals (their NN-descent
+builds use GPU atomics and are not bit-deterministic under load).
+
+### Reproduce
+
+```bash
+# Scale x metric A/B (exact vs legacy), concurrency=1
+for N in 10000 50000 100000 200000; do
+  for M in cosine l2 innerproduct; do
+    swift run -c release MetalANNSBenchmarks --vector-count $N --query-count 200 \
+      --runs 3 --warmup 1 --metric $M
+    swift run -c release MetalANNSBenchmarks --vector-count $N --query-count 200 \
+      --runs 3 --warmup 1 --metric $M --exact-search-limit 0
+  done
+done
+
+# Concurrency sweeps
+swift run -c release MetalANNSBenchmarks --vector-count 50000 --metric cosine \
+  --concurrency-sweep 1,8,16 --runs 3 --warmup 1
+swift run -c release MetalANNSBenchmarks --vector-count 50000 --metric cosine \
+  --concurrency-sweep 1,8 --runs 1 --exact-search-limit 0
+
+# Lifecycle costs + update-correctness spot checks
+swift run -c release MetalANNSBenchmarks --ops
+swift run -c release MetalANNSBenchmarks --ops --vector-count 100000 \
+  --insert-count 5000 --delete-count 2500
+
+# Deterministic regression suites
+swift test --filter ExactSearchIntegrationTests
+swift test --filter FlatSearchTests
+```
+
 ## 2026-08 — Fused Exact Search (FlatGPUSearch)
 
 Vector search retrieval was re-plumbed around a fused exact top-K path that
