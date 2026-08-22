@@ -155,7 +155,7 @@ struct UpdateCostBench {
             compactMs: compactMs,
             saveMs: Double(saveEnd - saveStart) / 1_000_000.0,
             loadMs: Double(loadEnd - saveEnd) / 1_000_000.0,
-            savedBytes: savedBytes ?? 0,
+            savedBytes: savedBytes,
             recallAfterInserts: recallAfterInserts,
             recallAfterDeletes: recallAfterDeletes,
             recallAfterCompact: recallAfterCompact,
