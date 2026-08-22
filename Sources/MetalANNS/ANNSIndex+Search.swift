@@ -179,34 +179,11 @@ extension GraphIndex {
 
         let maxConcurrency = await batchSearchMaxConcurrency()
 
-        return try await withThrowingTaskGroup(of: (Int, [SearchResult]).self) { group in
-            var orderedResults = [[SearchResult]?](repeating: nil, count: queries.count)
-            var nextIndex = 0
-
-            for _ in 0..<min(maxConcurrency, queries.count) {
-                let idx = nextIndex
-                let query = queries[idx]
-                nextIndex += 1
-                group.addTask { [self] in
-                    let result = try await self.search(query: query, k: k, filter: filter, metric: metric)
-                    return (idx, result)
-                }
-            }
-
-            for try await (idx, result) in group {
-                orderedResults[idx] = result
-                if nextIndex < queries.count {
-                    let idx = nextIndex
-                    let query = queries[idx]
-                    nextIndex += 1
-                    group.addTask { [self] in
-                        let result = try await self.search(query: query, k: k, filter: filter, metric: metric)
-                        return (idx, result)
-                    }
-                }
-            }
-
-            return orderedResults.map { $0! }
+        return try await BatchExecution.run(
+            over: queries,
+            maxConcurrency: maxConcurrency
+        ) { [self] query in
+            try await search(query: query, k: k, filter: filter, metric: metric)
         }
     }
 
