@@ -142,6 +142,93 @@ struct ExactSearchIntegrationTests {
         }
     }
 
+    /// Regression: chunked parallel top-K selection must keep candidate ids
+    /// global (chunk-local ids silently returned wrong rows above the
+    /// parallel-selection threshold).
+    @Test("Parallel GPU-tier selection stays exact past the fan-out threshold")
+    func parallelTierSelectionStaysExact() async throws {
+        let context = try makeContextGuarded()
+        let threshold = FlatGPUSearch.parallelSelectionMinVectorCount
+        // Enough rows for ≥2 lanes plus a non-divisible remainder chunk.
+        let count = threshold * 2 + 123
+        let dim = 8
+
+        var vectors = seededVectors(count: count, dim: dim, seed: 4_242)
+        // Duplicate a run of rows so ties exercise deterministic merge order,
+        // and place them where they straddle lane boundaries.
+        let tieRun = (threshold / 2)..<(threshold / 2 + 40)
+        if let last = tieRun.last {
+            for index in tieRun {
+                vectors[index] = vectors[last]
+            }
+        }
+
+        let buffer = try VectorBuffer(capacity: count, dim: dim, device: context.device)
+        try buffer.batchInsert(vectors: vectors, startingAt: 0)
+        buffer.setCount(count)
+
+        let queries = seededVectors(count: 3, dim: dim, seed: 99)
+        for (queryIndex, query) in queries.enumerated() {
+            let result = try await FlatGPUSearch.search(
+                context: context, query: query, vectors: buffer, k: 24, metric: .cosine,
+                tierOverride: 0)
+            #expect(result.count == 24)
+            let expected = bruteForceTopK(query: query, vectors: vectors, k: 24, metric: .cosine)
+            #expect(
+                Set(result.map(\.internalID)) == expected,
+                "parallel single-query mismatch q=\(queryIndex)")
+            #expect(
+                result.map(\.score) == result.map(\.score).sorted(),
+                "results not ascending q=\(queryIndex)")
+
+            let batch = try await FlatGPUSearch.batchSearch(
+                context: context, queries: [query], vectors: buffer, k: 24, metric: .cosine,
+                tierOverride: 0)
+            #expect(Set(batch[0].map(\.internalID)) == expected, "parallel batch mismatch q=\(queryIndex)")
+        }
+    }
+
+    /// Concurrent host-tier searches share the corpus-norm cache; interleaved
+    /// invalidation must never surface stale norms.
+    @Test("Concurrent host searches with norm-cache churn stay exact")
+    func concurrentHostSearchesSurviveCacheChurn() async throws {
+        guard MTLCreateSystemDefaultDevice() != nil else {
+            throw ANNSError.deviceNotSupported
+        }
+        let count = 2_000
+        let dim = 32
+        let vectors = seededVectors(count: count, dim: dim, seed: 1_337)
+        let buffer = try VectorBuffer(capacity: count, dim: dim, device: MTLCreateSystemDefaultDevice()!)
+        try buffer.batchInsert(vectors: vectors, startingAt: 0)
+        buffer.setCount(count)
+
+        let queries = seededVectors(count: 16, dim: dim, seed: 2_048)
+        let expected: [[UInt32]] = queries.map {
+            Array(bruteForceTopK(query: $0, vectors: vectors, k: 10, metric: .l2))
+        }
+
+        try await withThrowingTaskGroup(of: Bool.self) { group in
+            for round in 0..<64 {
+                group.addTask {
+                    let results = try await FlatGPUSearch.search(
+                        context: nil, query: queries[round % queries.count],
+                        vectors: buffer, k: 10, metric: .l2,
+                        tierOverride: Int.max)
+                    return Set(results.prefix(10).map(\.internalID)) == Set(expected[round % queries.count])
+                }
+                if round % 7 == 0 {
+                    group.addTask {
+                        FlatGPUSearch.invalidateHostNormCache(buffer: buffer.buffer)
+                        return true
+                    }
+                }
+            }
+            for try await ok in group {
+                #expect(ok, "concurrent search diverged from brute force under cache churn")
+            }
+        }
+    }
+
     // MARK: - Fallback behavior
 
     @Test("Disabling exact search falls back to graph traversal with usable recall")
