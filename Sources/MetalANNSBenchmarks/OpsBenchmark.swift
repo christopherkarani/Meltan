@@ -1,6 +1,7 @@
 import Foundation
 import MetalANNS
 import MetalANNSCore
+import MetalANNSFixtures
 
 /// Measures index lifecycle costs beyond query throughput: incremental
 /// inserts, deletes, compaction, serialization, and reload. Each stage is
@@ -35,8 +36,9 @@ enum OpsBenchmark {
     }
 
     static func run(config: Config) async throws -> [StageResult] {
-        let vectors = makeVectors(count: config.vectorCount, dim: config.dim, seedOffset: config.seed)
-        let insertedVectors = makeVectors(
+        let vectors = Fixtures.syntheticVectors(
+            count: config.vectorCount, dim: config.dim, seedOffset: config.seed)
+        let insertedVectors = Fixtures.syntheticVectors(
             count: config.insertCount, dim: config.dim, seedOffset: config.seed &+ 500_000)
         let ids = (0..<config.vectorCount).map { "v_\($0)" }
         let insertedIDs = (0..<config.insertCount).map { "new_\($0)" }
@@ -138,15 +140,19 @@ enum OpsBenchmark {
         excludedInternalIDs: Set<UInt32> = [],
         config: Config
     ) async throws -> Double {
-        let queries = makeVectors(count: 8, dim: config.dim, seedOffset: config.seed &+ 900_001)
+        let queries = Fixtures.syntheticVectors(
+            count: 8, dim: config.dim, seedOffset: config.seed &+ 900_001)
         let k = 10
         var hits = 0
         var total = 0
         for query in queries {
             let truth = Set(
-                bruteForceTopK(query: query, vectors: corpus, k: k + excludedInternalIDs.count, metric: config.metric)
-                    .filter { !excludedInternalIDs.contains($0) }
-                    .prefix(k))
+                Fixtures.bruteForceTopK(
+                    query: query, vectors: corpus, k: k + excludedInternalIDs.count,
+                    metric: config.metric
+                )
+                .filter { !excludedInternalIDs.contains($0) }
+                .prefix(k))
             let results = try await index.search(query: query, k: k)
             let got = Set(results.prefix(k).map(\.internalID))
             hits += got.intersection(truth).count
@@ -157,68 +163,6 @@ enum OpsBenchmark {
 
     private static func elapsedMs(_ start: UInt64) -> Double {
         Double(DispatchTime.now().uptimeNanoseconds &- start) / 1_000_000.0
-    }
-
-    private static func makeVectors(count: Int, dim: Int, seedOffset: Int) -> [[Float]] {
-        (0..<count).map { row in
-            (0..<dim).map { col in
-                let i = Float((row + seedOffset) * dim + col)
-                return sin(i * 0.173) + cos(i * 0.071)
-            }
-        }
-    }
-
-    private static func bruteForceTopK(
-        query: [Float],
-        vectors: [[Float]],
-        k: Int,
-        metric: Metric
-    ) -> [UInt32] {
-        let topK = max(1, min(k, vectors.count))
-        return
-            vectors
-            .enumerated()
-            .map { idx, vector -> (id: UInt32, distance: Float) in
-                (UInt32(idx), distance(query: query, vector: vector, metric: metric))
-            }
-            .sorted { $0.distance < $1.distance }
-            .prefix(topK)
-            .map(\.id)
-    }
-
-    private static func distance(query: [Float], vector: [Float], metric: Metric) -> Float {
-        switch metric {
-        case .cosine:
-            var dot: Float = 0
-            var normQ: Float = 0
-            var normV: Float = 0
-            for d in 0..<query.count {
-                dot += query[d] * vector[d]
-                normQ += query[d] * query[d]
-                normV += vector[d] * vector[d]
-            }
-            let denom = sqrt(normQ) * sqrt(normV)
-            return denom < 1e-10 ? 1.0 : (1.0 - (dot / denom))
-        case .l2:
-            var sum: Float = 0
-            for d in 0..<query.count {
-                let diff = query[d] - vector[d]
-                sum += diff * diff
-            }
-            return sum
-        case .innerProduct:
-            var dot: Float = 0
-            for d in 0..<query.count {
-                dot += query[d] * vector[d]
-            }
-            return -dot
-        case .hamming:
-            var mismatches = 0
-            for d in 0..<query.count where query[d] != vector[d] {
-                mismatches += 1
-            }
-            return Float(mismatches)
-        }
     }
 
     static func renderTable(_ stages: [StageResult]) -> String {

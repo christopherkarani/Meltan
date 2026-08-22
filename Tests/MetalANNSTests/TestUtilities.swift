@@ -20,6 +20,17 @@ enum Require {
     static func metalContext() throws -> MetalContext {
         try MetalContext()
     }
+
+    /// Returns a live `MetalContext` or throws on simulator / device-less runs,
+    /// logging `suite` so the skip reason names the suite being skipped.
+    static func gpuContext(suite: String) throws -> MetalContext {
+        #if targetEnvironment(simulator)
+            print("Skipping \(suite) on simulator")
+            throw ANNSError.deviceNotSupported
+        #else
+            try metalContext()
+        #endif
+    }
 }
 
 // MARK: - Temporary Directories

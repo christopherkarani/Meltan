@@ -6,15 +6,6 @@ import Testing
 
 @Suite("GPU-CPU Search Parity")
 struct GPUCPUParityTests {
-    private func requireGPUContext() throws -> MetalContext {
-        #if targetEnvironment(simulator)
-            print("Skipping GPUCPUParityTests on simulator")
-            throw ANNSError.deviceNotSupported
-        #else
-            try Require.metalContext()
-        #endif
-    }
-
     private func buildGraph(
         vectors: [[Float]],
         degree: Int,
@@ -70,7 +61,7 @@ struct GPUCPUParityTests {
         ef: Int,
         maxIter: Int
     ) async throws {
-        let context = try requireGPUContext()
+        let context = try Require.gpuContext(suite: "GPUCPUParityTests")
         var rng = SeededGenerator(state: UInt64(nodeCount) &* UInt64(dim) &+ 7)
         let vectors = (0..<nodeCount).map { _ in
             (0..<dim).map { _ in Float.random(in: -1...1, using: &rng) }
@@ -143,7 +134,7 @@ struct GPUCPUParityTests {
 
     @Test("GPU search deterministic for same query")
     func gpuSearchIsDeterministic() async throws {
-        let context = try requireGPUContext()
+        let context = try Require.gpuContext(suite: "GPUCPUParityTests")
         var rng = SeededGenerator(state: 1234)
 
         let nodeCount = 300

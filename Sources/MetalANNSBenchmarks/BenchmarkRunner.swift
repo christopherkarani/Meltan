@@ -1,6 +1,7 @@
 import Foundation
 import MetalANNS
 import MetalANNSCore
+import MetalANNSFixtures
 
 struct BenchmarkRunner {
     struct Config {
@@ -43,9 +44,10 @@ struct BenchmarkRunner {
 
     static func run(config: Config, repeatRuns: Int = 1, warmupRuns: Int = 0) async throws -> Results {
         let normalizedConfig = normalize(config)
-        let vectors = makeVectors(count: normalizedConfig.vectorCount, dim: normalizedConfig.dim, seedOffset: 0)
+        let vectors = Fixtures.syntheticVectors(
+            count: normalizedConfig.vectorCount, dim: normalizedConfig.dim, seedOffset: 0)
         let ids = (0..<normalizedConfig.vectorCount).map { "v_\($0)" }
-        let queries = makeVectors(
+        let queries = Fixtures.syntheticVectors(
             count: normalizedConfig.queryCount,
             dim: normalizedConfig.dim,
             seedOffset: 1_000_000
@@ -53,7 +55,7 @@ struct BenchmarkRunner {
 
         let targetNeighborCount = max(1, min(100, normalizedConfig.vectorCount))
         let expectedNeighbors = queries.map {
-            bruteForceTopK(
+            Fixtures.bruteForceTopK(
                 query: $0,
                 vectors: vectors,
                 k: targetNeighborCount,
@@ -178,29 +180,7 @@ struct BenchmarkRunner {
                 warmupRuns: warmupRuns
             )
             rows.append(
-                BenchmarkReport.Row(
-                    label: "concurrency=\(effectiveLevel)",
-                    recallAt10: result.recallAt10,
-                    qps: result.qps,
-                    buildTimeMs: result.buildTimeMs,
-                    p50Ms: result.queryLatencyP50Ms,
-                    p95Ms: result.queryLatencyP95Ms,
-                    p99Ms: result.queryLatencyP99Ms,
-                    recallAt1: result.recallAt1,
-                    recallAt100: result.recallAt100,
-                    queryCount: result.queryCount,
-                    avgQueryMs: result.queryLatencyMeanMs,
-                    maxQueryMs: result.queryLatencyMaxMs,
-                    p90Ms: result.latencyDistribution.p90Ms,
-                    p999Ms: result.latencyDistribution.p999Ms,
-                    stdDevMs: result.queryLatencyStdDevMs,
-                    minMs: result.queryLatencyMinMs,
-                    indexResidentMB: Double(result.indexResidentBytesEstimate) / (1024 * 1024),
-                    peakResidentMB: result.memoryAfterQueries.peakResidentMB,
-                    concurrency: effectiveLevel,
-                    firstQueryMs: result.firstQueryLatencyMs,
-                    warmSteadyMeanMs: result.warmSteadyMeanMs
-                )
+                BenchmarkRunner.reportRow(from: result, label: "concurrency=\(effectiveLevel)")
             )
         }
 
@@ -250,30 +230,8 @@ struct BenchmarkRunner {
                 warmupRuns: warmupRuns
             )
             rows.append(
-                BenchmarkReport.Row(
-                    label: "backend=\(backendLabel)",
-                    recallAt10: result.recallAt10,
-                    qps: result.qps,
-                    buildTimeMs: result.buildTimeMs,
-                    p50Ms: result.queryLatencyP50Ms,
-                    p95Ms: result.queryLatencyP95Ms,
-                    p99Ms: result.queryLatencyP99Ms,
-                    recallAt1: result.recallAt1,
-                    recallAt100: result.recallAt100,
-                    queryCount: result.queryCount,
-                    avgQueryMs: result.queryLatencyMeanMs,
-                    maxQueryMs: result.queryLatencyMaxMs,
-                    p90Ms: result.latencyDistribution.p90Ms,
-                    p999Ms: result.latencyDistribution.p999Ms,
-                    stdDevMs: result.queryLatencyStdDevMs,
-                    minMs: result.queryLatencyMinMs,
-                    indexResidentMB: Double(result.indexResidentBytesEstimate) / (1024 * 1024),
-                    peakResidentMB: result.memoryAfterQueries.peakResidentMB,
-                    concurrency: max(1, concurrency),
-                    firstQueryMs: result.firstQueryLatencyMs,
-                    warmSteadyMeanMs: result.warmSteadyMeanMs,
-                    backendLabel: backendLabel
-                )
+                BenchmarkRunner.reportRow(
+                    from: result, label: "backend=\(backendLabel)", backendLabel: backendLabel)
             )
         }
 
@@ -309,26 +267,8 @@ struct BenchmarkRunner {
                 warmupRuns: warmupRuns
             )
             rows.append(
-                BenchmarkReport.Row(
-                    label: item.label,
-                    recallAt10: result.recallAt10,
-                    qps: result.qps,
-                    buildTimeMs: result.buildTimeMs,
-                    p50Ms: result.queryLatencyP50Ms,
-                    p95Ms: result.queryLatencyP95Ms,
-                    p99Ms: result.queryLatencyP99Ms,
-                    recallAt1: result.recallAt1,
-                    recallAt100: result.recallAt100,
-                    queryCount: result.queryCount,
-                    avgQueryMs: result.queryLatencyMeanMs,
-                    maxQueryMs: result.queryLatencyMaxMs,
-                    p90Ms: result.latencyDistribution.p90Ms,
-                    p999Ms: result.latencyDistribution.p999Ms,
-                    stdDevMs: result.queryLatencyStdDevMs,
-                    minMs: result.queryLatencyMinMs,
-                    indexResidentMB: Double(result.indexResidentBytesEstimate) / (1024 * 1024),
-                    peakResidentMB: result.memoryAfterQueries.peakResidentMB
-                )
+                BenchmarkRunner.reportRow(
+                    from: result, label: item.label, includeConcurrencyFields: false)
             )
         }
 
@@ -552,15 +492,9 @@ struct BenchmarkRunner {
             let exactTop10 = Set(expected.prefix(top10Count))
             let exactTop100 = Set(expected.prefix(top100Count))
 
-            if !exactTop1.isEmpty {
-                recallAt1Total += Double(approxTop1.intersection(exactTop1).count) / Double(exactTop1.count)
-            }
-            if !exactTop10.isEmpty {
-                recallAt10Total += Double(approxTop10.intersection(exactTop10).count) / Double(exactTop10.count)
-            }
-            if !exactTop100.isEmpty {
-                recallAt100Total += Double(approxTop100.intersection(exactTop100).count) / Double(exactTop100.count)
-            }
+            recallAt1Total += Fixtures.recall(approx: approxTop1, exact: exactTop1)
+            recallAt10Total += Fixtures.recall(approx: approxTop10, exact: exactTop10)
+            recallAt100Total += Fixtures.recall(approx: approxTop100, exact: exactTop100)
         }
         let batchEnd = DispatchTime.now().uptimeNanoseconds
 
@@ -698,18 +632,9 @@ struct BenchmarkRunner {
         let exactTop10 = Set(expected.prefix(top10Count))
         let exactTop100 = Set(expected.prefix(top100Count))
 
-        var r1: Double = 0
-        var r10: Double = 0
-        var r100: Double = 0
-        if !exactTop1.isEmpty {
-            r1 = Double(approxTop1.intersection(exactTop1).count) / Double(exactTop1.count)
-        }
-        if !exactTop10.isEmpty {
-            r10 = Double(approxTop10.intersection(exactTop10).count) / Double(exactTop10.count)
-        }
-        if !exactTop100.isEmpty {
-            r100 = Double(approxTop100.intersection(exactTop100).count) / Double(exactTop100.count)
-        }
+        let r1 = Fixtures.recall(approx: approxTop1, exact: exactTop1)
+        let r10 = Fixtures.recall(approx: approxTop10, exact: exactTop10)
+        let r100 = Fixtures.recall(approx: approxTop100, exact: exactTop100)
 
         return PerQueryStats(latencyMs: latencyMs, recallAt1: r1, recallAt10: r10, recallAt100: r100)
     }
@@ -725,66 +650,36 @@ struct BenchmarkRunner {
         return normalized
     }
 
-    private static func makeVectors(count: Int, dim: Int, seedOffset: Int) -> [[Float]] {
-        (0..<count).map { row in
-            (0..<dim).map { col in
-                let i = Float((row + seedOffset) * dim + col)
-                return sin(i * 0.173) + cos(i * 0.071)
-            }
-        }
-    }
-
-    private static func bruteForceTopK(
-        query: [Float],
-        vectors: [[Float]],
-        k: Int,
-        metric: Metric
-    ) -> [UInt32] {
-        let topCount = max(1, min(k, vectors.count))
-        return
-            vectors
-            .enumerated()
-            .map { idx, vector -> (id: UInt32, distance: Float) in
-                (UInt32(idx), distance(query: query, vector: vector, metric: metric))
-            }
-            .sorted { $0.distance < $1.distance }
-            .prefix(topCount)
-            .map(\.id)
-    }
-
-    private static func distance(query: [Float], vector: [Float], metric: Metric) -> Float {
-        switch metric {
-        case .cosine:
-            var dot: Float = 0
-            var normQ: Float = 0
-            var normV: Float = 0
-            for d in 0..<query.count {
-                dot += query[d] * vector[d]
-                normQ += query[d] * query[d]
-                normV += vector[d] * vector[d]
-            }
-            let denom = sqrt(normQ) * sqrt(normV)
-            return denom < 1e-10 ? 1.0 : (1.0 - (dot / denom))
-        case .l2:
-            var sum: Float = 0
-            for d in 0..<query.count {
-                let diff = query[d] - vector[d]
-                sum += diff * diff
-            }
-            return sum
-        case .innerProduct:
-            var dot: Float = 0
-            for d in 0..<query.count {
-                dot += query[d] * vector[d]
-            }
-            return -dot
-        case .hamming:
-            var mismatches = 0
-            for d in 0..<query.count where query[d] != vector[d] {
-                mismatches += 1
-            }
-            return Float(mismatches)
-        }
+    static func reportRow(
+        from results: BenchmarkRunner.Results,
+        label: String = "single",
+        includeConcurrencyFields: Bool = true,
+        backendLabel: String = ""
+    ) -> BenchmarkReport.Row {
+        BenchmarkReport.Row(
+            label: label,
+            recallAt10: results.recallAt10,
+            qps: results.qps,
+            buildTimeMs: results.buildTimeMs,
+            p50Ms: results.queryLatencyP50Ms,
+            p95Ms: results.queryLatencyP95Ms,
+            p99Ms: results.queryLatencyP99Ms,
+            recallAt1: results.recallAt1,
+            recallAt100: results.recallAt100,
+            queryCount: results.queryCount,
+            avgQueryMs: results.queryLatencyMeanMs,
+            maxQueryMs: results.queryLatencyMaxMs,
+            p90Ms: results.latencyDistribution.p90Ms,
+            p999Ms: results.latencyDistribution.p999Ms,
+            stdDevMs: results.queryLatencyStdDevMs,
+            minMs: results.queryLatencyMinMs,
+            indexResidentMB: Double(results.indexResidentBytesEstimate) / (1024 * 1024),
+            peakResidentMB: results.memoryAfterQueries.peakResidentMB,
+            concurrency: includeConcurrencyFields ? results.concurrency : 1,
+            firstQueryMs: includeConcurrencyFields ? results.firstQueryLatencyMs : 0,
+            warmSteadyMeanMs: includeConcurrencyFields ? results.warmSteadyMeanMs : 0,
+            backendLabel: backendLabel
+        )
     }
 
     private struct BenchmarkBatchStats {

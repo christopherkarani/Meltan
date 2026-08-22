@@ -1,5 +1,6 @@
 import Foundation
 import Metal
+import MetalANNSFixtures
 import Testing
 
 @testable import MetalANNS
@@ -13,13 +14,8 @@ import Testing
 struct ExactSearchIntegrationTests {
     // MARK: - Helpers
 
-    private func makeContext() throws -> MetalContext {
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            throw ANNSError.deviceNotSupported
-        }
-        return try MetalContext()
-    }
-
+    /// Local LCG-based generator; deliberately distinct from the shared
+    /// xorshift `seededVectors` in TestUtilities to preserve historical data.
     private func seededVectors(count: Int, dim: Int, seed: UInt64 = 7) -> [[Float]] {
         var state = seed
         func next() -> Float {
@@ -27,56 +23,6 @@ struct ExactSearchIntegrationTests {
             return Float((state >> 33) & 0xFFFFFF) / Float(0xFFFFFF) * 2.0 - 1.0
         }
         return (0..<count).map { _ in (0..<dim).map { _ in next() } }
-    }
-
-    private func bruteForceTopK(
-        query: [Float],
-        vectors: [[Float]],
-        k: Int,
-        metric: Metric,
-        skipIndices: Set<Int> = []
-    ) -> Set<UInt32> {
-        let scored = vectors.enumerated().compactMap { index, vector -> (UInt32, Float)? in
-            guard !skipIndices.contains(index) else { return nil }
-            return (UInt32(index), distance(query: query, vector: vector, metric: metric))
-        }
-        return Set(
-            scored.sorted { lhs, rhs in
-                lhs.1 == rhs.1 ? lhs.0 < rhs.0 : lhs.1 < rhs.1
-            }
-            .prefix(k)
-            .map(\.0))
-    }
-
-    private func distance(query: [Float], vector: [Float], metric: Metric) -> Float {
-        switch metric {
-        case .cosine:
-            var dot: Float = 0
-            var normQ: Float = 0
-            var normV: Float = 0
-            for d in 0..<query.count {
-                dot += query[d] * vector[d]
-                normQ += query[d] * query[d]
-                normV += vector[d] * vector[d]
-            }
-            let denom = sqrt(normQ) * sqrt(normV)
-            return denom < 1e-10 ? 1.0 : (1.0 - (dot / denom))
-        case .l2:
-            var sum: Float = 0
-            for d in 0..<query.count {
-                let diff = query[d] - vector[d]
-                sum += diff * diff
-            }
-            return sum
-        case .innerProduct:
-            var dot: Float = 0
-            for d in 0..<query.count {
-                dot += query[d] * vector[d]
-            }
-            return -dot
-        case .hamming:
-            return 0
-        }
     }
 
     /// Runs body with an explicit tier override so the Metal flat-scan kernel
@@ -90,7 +36,7 @@ struct ExactSearchIntegrationTests {
 
     @Test("GPU tier scan matches brute force across metrics")
     func gpuTierMatchesBruteForce() async throws {
-        let context = try makeContextGuarded()
+        let context = try Require.metalContext()
         try await withGPUForceTier(corpusSize: 2048) { tierOverride in
             let dimCases = [64, 66]
             for dim in dimCases {
@@ -107,7 +53,7 @@ struct ExactSearchIntegrationTests {
                         tierOverride: tierOverride)
                     #expect(results.count == queries.count)
                     for (queryIndex, resultRow) in results.enumerated() {
-                        let expected = bruteForceTopK(
+                        let expected = Fixtures.exactTopK(
                             query: queries[queryIndex], vectors: vectors, k: 50, metric: metric)
                         #expect(
                             Set(resultRow.map(\.internalID)) == expected,
@@ -120,7 +66,7 @@ struct ExactSearchIntegrationTests {
 
     @Test("GPU tier batch chunking stays exact across dispatch boundaries")
     func gpuTierBatchChunking() async throws {
-        let context = try makeContextGuarded()
+        let context = try Require.metalContext()
         try await withGPUForceTier(corpusSize: 1024) { tierOverride in
             let count = 1024
             let dim = 32
@@ -135,7 +81,7 @@ struct ExactSearchIntegrationTests {
                 tierOverride: tierOverride)
             #expect(batches.count == queries.count)
             for (queryIndex, row) in batches.enumerated() {
-                let expected = bruteForceTopK(
+                let expected = Fixtures.exactTopK(
                     query: queries[queryIndex], vectors: vectors, k: 20, metric: .cosine)
                 #expect(Set(row.map(\.internalID)) == expected, "chunked batch mismatch q=\(queryIndex)")
             }
@@ -147,7 +93,7 @@ struct ExactSearchIntegrationTests {
     /// parallel-selection threshold).
     @Test("Parallel GPU-tier selection stays exact past the fan-out threshold")
     func parallelTierSelectionStaysExact() async throws {
-        let context = try makeContextGuarded()
+        let context = try Require.metalContext()
         let threshold = FlatGPUSearch.parallelSelectionMinVectorCount
         // Enough rows for ≥2 lanes plus a non-divisible remainder chunk.
         let count = threshold * 2 + 123
@@ -173,7 +119,7 @@ struct ExactSearchIntegrationTests {
                 context: context, query: query, vectors: buffer, k: 24, metric: .cosine,
                 tierOverride: 0)
             #expect(result.count == 24)
-            let expected = bruteForceTopK(query: query, vectors: vectors, k: 24, metric: .cosine)
+            let expected = Fixtures.exactTopK(query: query, vectors: vectors, k: 24, metric: .cosine)
             #expect(
                 Set(result.map(\.internalID)) == expected,
                 "parallel single-query mismatch q=\(queryIndex)")
@@ -192,19 +138,17 @@ struct ExactSearchIntegrationTests {
     /// invalidation must never surface stale norms.
     @Test("Concurrent host searches with norm-cache churn stay exact")
     func concurrentHostSearchesSurviveCacheChurn() async throws {
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            throw ANNSError.deviceNotSupported
-        }
+        let device = try Require.metalDevice()
         let count = 2_000
         let dim = 32
         let vectors = seededVectors(count: count, dim: dim, seed: 1_337)
-        let buffer = try VectorBuffer(capacity: count, dim: dim, device: MTLCreateSystemDefaultDevice()!)
+        let buffer = try VectorBuffer(capacity: count, dim: dim, device: device)
         try buffer.batchInsert(vectors: vectors, startingAt: 0)
         buffer.setCount(count)
 
         let queries = seededVectors(count: 16, dim: dim, seed: 2_048)
         let expected: [[UInt32]] = queries.map {
-            Array(bruteForceTopK(query: $0, vectors: vectors, k: 10, metric: .l2))
+            Array(Fixtures.exactTopK(query: $0, vectors: vectors, k: 10, metric: .l2))
         }
 
         try await withThrowingTaskGroup(of: Bool.self) { group in
@@ -244,10 +188,10 @@ struct ExactSearchIntegrationTests {
         let queries = seededVectors(count: 6, dim: dim, seed: 303)
         var recallSum = 0.0
         for query in queries {
-            let expected = bruteForceTopK(query: query, vectors: vectors, k: 10, metric: .cosine)
+            let expected = Fixtures.exactTopK(query: query, vectors: vectors, k: 10, metric: .cosine)
             let results = try await index.search(query: query, k: 10)
             let got = Set(results.prefix(10).map(\.internalID))
-            recallSum += Double(got.intersection(expected).count) / 10.0
+            recallSum += Fixtures.recall(approx: got, exact: expected)
         }
         let meanRecall = recallSum / Double(queries.count)
         #expect(meanRecall >= 0.85, "graph fallback recall too low: \(meanRecall)")
@@ -333,7 +277,7 @@ struct ExactSearchIntegrationTests {
     ) async throws {
         let probes = seededVectors(count: queries, dim: dim, seed: seed)
         for (queryIndex, query) in probes.enumerated() {
-            let expected = bruteForceTopK(
+            let expected = Fixtures.exactTopK(
                 query: query, vectors: corpus, k: 10, metric: .cosine,
                 skipIndices: excludedInternalIDs)
             let results = try await index.search(query: query, k: 10)
@@ -342,12 +286,5 @@ struct ExactSearchIntegrationTests {
                 got == expected,
                 "[\(stageLabel)] exactness violated q=\(queryIndex): got \(got.sorted()), want \(expected.sorted())")
         }
-    }
-
-    private func makeContextGuarded() throws -> MetalContext {
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            throw ANNSError.deviceNotSupported
-        }
-        return try MetalContext()
     }
 }

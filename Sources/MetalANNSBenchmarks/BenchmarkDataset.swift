@@ -1,5 +1,6 @@
 import Foundation
 import MetalANNSCore
+import MetalANNSFixtures
 
 public enum BenchmarkDatasetError: Error, Sendable, CustomStringConvertible {
     case invalidDataset(String)
@@ -61,13 +62,15 @@ public struct BenchmarkDataset: Sendable {
         let safeDimension = max(1, dimension)
         let safeK = max(1, min(k, safeTrainCount))
 
-        let trainVectors = makeVectors(count: safeTrainCount, dim: safeDimension, seedOffset: seed)
-        let testVectors = makeVectors(count: safeTestCount, dim: safeDimension, seedOffset: seed + 1_000_000)
+        let trainVectors = Fixtures.syntheticVectors(count: safeTrainCount, dim: safeDimension, seedOffset: seed)
+        let testVectors = Fixtures.syntheticVectors(
+            count: safeTestCount, dim: safeDimension, seedOffset: seed + 1_000_000)
 
         var groundTruth: [[UInt32]] = []
         groundTruth.reserveCapacity(safeTestCount)
         for query in testVectors {
-            groundTruth.append(bruteForceTopK(query: query, vectors: trainVectors, k: safeK, metric: metric))
+            groundTruth.append(
+                Fixtures.bruteForceTopK(query: query, vectors: trainVectors, k: safeK, metric: metric))
         }
 
         return BenchmarkDataset(
@@ -244,67 +247,6 @@ public struct BenchmarkDataset: Sendable {
                     "groundTruth row \(index) has count \(neighbors.count), expected \(neighborsCount)"
                 )
             }
-        }
-    }
-
-    private static func makeVectors(count: Int, dim: Int, seedOffset: Int) -> [[Float]] {
-        (0..<count).map { row in
-            (0..<dim).map { col in
-                let i = Float((row + seedOffset) * dim + col)
-                return sin(i * 0.173) + cos(i * 0.071)
-            }
-        }
-    }
-
-    private static func bruteForceTopK(
-        query: [Float],
-        vectors: [[Float]],
-        k: Int,
-        metric: Metric
-    ) -> [UInt32] {
-        vectors.enumerated()
-            .map { (index, vector) in
-                (UInt32(index), distance(query: query, vector: vector, metric: metric))
-            }
-            .sorted { lhs, rhs in
-                lhs.1 < rhs.1
-            }
-            .prefix(k)
-            .map(\.0)
-    }
-
-    private static func distance(query: [Float], vector: [Float], metric: Metric) -> Float {
-        switch metric {
-        case .cosine:
-            var dot: Float = 0
-            var normQ: Float = 0
-            var normV: Float = 0
-            for d in 0..<query.count {
-                dot += query[d] * vector[d]
-                normQ += query[d] * query[d]
-                normV += vector[d] * vector[d]
-            }
-            let denom = sqrt(normQ) * sqrt(normV)
-            return denom < 1e-10 ? 1.0 : (1.0 - (dot / denom))
-        case .l2:
-            var sum: Float = 0
-            for d in 0..<query.count {
-                let diff = query[d] - vector[d]
-                sum += diff * diff
-            }
-            return sum
-        case .innerProduct:
-            var dot: Float = 0
-            for d in 0..<query.count {
-                dot += query[d] * vector[d]
-            }
-            return -dot
-        case .hamming:
-            var mismatches = 0
-            for d in 0..<query.count where query[d] != vector[d] {
-                mismatches += 1
-            }
-            return Float(mismatches)
         }
     }
 

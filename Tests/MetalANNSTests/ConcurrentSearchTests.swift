@@ -1,4 +1,5 @@
 import Foundation
+import MetalANNSFixtures
 import Testing
 
 @testable import MetalANNS
@@ -7,9 +8,9 @@ import Testing
 struct ConcurrentSearchTests {
     @Test("batchSearchMatchesSequential")
     func batchSearchMatchesSequential() async throws {
-        let vectors = makeVectors(count: 100, dim: 16, seedOffset: 0)
+        let vectors = Fixtures.syntheticVectors(count: 100, dim: 16, seedOffset: 0)
         let ids = (0..<100).map { "v_\($0)" }
-        let queries = makeVectors(count: 10, dim: 16, seedOffset: 10_000)
+        let queries = Fixtures.syntheticVectors(count: 10, dim: 16, seedOffset: 10_000)
 
         let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await index.build(vectors: vectors, ids: ids)
@@ -32,9 +33,9 @@ struct ConcurrentSearchTests {
 
     @Test("batchSearchHandlesLargeQueryCount")
     func batchSearchHandlesLargeQueryCount() async throws {
-        let vectors = makeVectors(count: 200, dim: 32, seedOffset: 0)
+        let vectors = Fixtures.syntheticVectors(count: 200, dim: 32, seedOffset: 0)
         let ids = (0..<200).map { "v_\($0)" }
-        let queries = makeVectors(count: 50, dim: 32, seedOffset: 20_000)
+        let queries = Fixtures.syntheticVectors(count: 50, dim: 32, seedOffset: 20_000)
 
         let index = GraphIndex(configuration: IndexConfiguration(degree: 8, metric: .cosine))
         try await index.build(vectors: vectors, ids: ids)
@@ -43,14 +44,5 @@ struct ConcurrentSearchTests {
         #expect(results.count == 50)
         #expect(results.allSatisfy { $0.count == 10 })
         #expect(results.allSatisfy { !$0.isEmpty })
-    }
-
-    private func makeVectors(count: Int, dim: Int, seedOffset: Int) -> [[Float]] {
-        (0..<count).map { row in
-            (0..<dim).map { col in
-                let i = Float((row + seedOffset) * dim + col)
-                return sin(i * 0.173) + cos(i * 0.071)
-            }
-        }
     }
 }

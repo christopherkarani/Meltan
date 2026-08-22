@@ -28,18 +28,24 @@ let package = Package(
             ],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
+        .target(
+            name: "MetalANNSFixtures",
+            dependencies: ["MetalANNSCore"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
         .testTarget(
             name: "MetalANNSTests",
             dependencies: [
                 "MetalANNS",
                 "MetalANNSCore",
+                "MetalANNSFixtures",
                 .product(name: "GRDB", package: "GRDB.swift"),
             ],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .executableTarget(
             name: "MetalANNSBenchmarks",
-            dependencies: ["MetalANNS", "MetalANNSCore"],
+            dependencies: ["MetalANNS", "MetalANNSCore", "MetalANNSFixtures"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         )
     ]

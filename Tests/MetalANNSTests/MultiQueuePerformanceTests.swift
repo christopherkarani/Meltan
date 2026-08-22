@@ -1,4 +1,5 @@
 import Foundation
+import MetalANNSFixtures
 import Testing
 
 @testable import MetalANNS
@@ -42,7 +43,7 @@ struct MultiQueuePerformanceTests {
             return
         #else
             let context = try Require.metalContext()
-            let vectors = makeVectors(count: 10_000, dim: 32, seedOffset: 0)
+            let vectors = Fixtures.syntheticVectors(count: 10_000, dim: 32, seedOffset: 0)
             let ids = (0..<vectors.count).map { "v\($0)" }
             let queries = Array(vectors.prefix(200))
             let index = GraphIndex(
@@ -178,15 +179,6 @@ struct MultiQueuePerformanceTests {
                 let center: Float = d == (cluster % dim) ? 1.0 : 0.0
                 let noiseSeed = Float((i * dim) + d)
                 return center + sin(noiseSeed * 0.031) * 0.01
-            }
-        }
-    }
-
-    private func makeVectors(count: Int, dim: Int, seedOffset: Int) -> [[Float]] {
-        (0..<count).map { row in
-            (0..<dim).map { col in
-                let i = Float((row + seedOffset) * dim + col)
-                return sin(i * 0.173) + cos(i * 0.071)
             }
         }
     }
