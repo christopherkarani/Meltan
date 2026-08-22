@@ -63,17 +63,19 @@ struct StreamingIndexMergeTests {
         }
 
         var sawMerging = false
-        // Cooperative polling: the merge sets/clears isMerging across several
-        // actor suspension points (index builds), so yielding between checks
-        // lets this loop observe the window without racing a wall-clock sleep
-        // against a merge that may finish in under one sleep on a loaded
-        // CI runner.
-        for _ in 0..<10_000 {
+        // Heavily loaded CI runners can take a long time to reach the merge
+        // after flush() is spawned (the inserts alone dominate this test's
+        // runtime on 3-vCPU runners), so poll against a generous wall-clock
+        // deadline rather than a fixed iteration count. The merge itself
+        // spans several actor suspension points (index builds), which a
+        // 1ms poll easily catches once it starts.
+        let deadline = ContinuousClock.now.advanced(by: .seconds(120))
+        while ContinuousClock.now < deadline {
             if await index.isMerging {
                 sawMerging = true
                 break
             }
-            await Task.yield()
+            try await Task.sleep(nanoseconds: 1_000_000)
         }
 
         try await flushTask.value
