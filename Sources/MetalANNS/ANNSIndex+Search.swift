@@ -39,8 +39,11 @@ extension GraphIndex {
         let effectiveEf = max(configuration.efSearch, effectiveK)
 
         var pendingFlatResults: [SearchResult]? = nil
+        // The exact path is delete-aware: scanning top-(k + deletedCount) rows
+        // guarantees at least k survivors after soft-deletion filtering, so
+        // results stay exact while deletes are present. The maxTopK (256)
+        // eligibility bound still routes heavy-deletion workloads to the graph.
         if filter == nil,
-            deletedCount == 0,
             MetalANNSCore.FlatGPUSearch.isEligible(
                 vectors: vectors,
                 metric: searchMetric,
@@ -332,24 +335,26 @@ extension GraphIndex {
         }
 
         if let vectors, filter == nil,
-            softDeletion.deletedCount == 0,
             MetalANNSCore.FlatGPUSearch.isEligible(
                 vectors: vectors,
                 metric: metric ?? configuration.metric,
-                k: k,
+                k: min(vectors.count, k + softDeletion.deletedCount),
                 maxVectorCount: configuration.exactSearchMaxVectorCount
             )
         {
             do {
+                let deletedCount = softDeletion.deletedCount
                 let flatResults = try await MetalANNSCore.FlatGPUSearch.batchSearch(
                     context: context,
                     queries: queries,
                     vectors: vectors,
-                    k: k,
+                    // Over-fetch by the deletion count so filtering survivors
+                    // back to k stays exact (mirror of the single-query path).
+                    k: min(vectors.count, k + deletedCount),
                     metric: metric ?? configuration.metric
                 )
                 let mapped = flatResults.map { results in
-                    results.compactMap { result -> SearchResult? in
+                    softDeletion.filterResults(results).compactMap { result -> SearchResult? in
                         let externalID = idMap.externalID(for: result.internalID) ?? ""
                         let numericID = idMap.numericID(for: result.internalID)
                         guard !externalID.isEmpty || numericID != nil else {

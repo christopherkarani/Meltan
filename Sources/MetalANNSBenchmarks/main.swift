@@ -212,6 +212,57 @@ func makeCrossProductConfigs(
     return combos
 }
 
+func printUpdateCosts(_ results: UpdateCostBench.Results) {
+    print("")
+    print(
+        "Update costs (n=\(results.vectorCount), dim=\(results.dim), metric=\(results.metric.rawValue), updates=\(results.updateCount)):"
+    )
+    print("  Build total:        \(String(format: "%.1f", results.buildTimeMs)) ms")
+    print(
+        "  Insert mean:        \(String(format: "%.3f", results.insertMeanMs)) ms/vector (\(String(format: "%.0f", results.insertQPS)) vectors/s)"
+    )
+    print("  Delete mean:        \(String(format: "%.3f", results.deleteMeanMs)) ms/vector")
+    print("  Compact:            \(String(format: "%.1f", results.compactMs)) ms")
+    print("  Save:               \(String(format: "%.1f", results.saveMs)) ms (\(results.savedBytes) bytes)")
+    print("  Load:               \(String(format: "%.1f", results.loadMs)) ms")
+    print("  Recall after inserts:  \(String(format: "%.3f", results.recallAfterInserts))")
+    print("  Recall after deletes:  \(String(format: "%.3f", results.recallAfterDeletes))")
+    print("  Recall after compact:  \(String(format: "%.3f", results.recallAfterCompact))")
+    print("  Recall after reload:   \(String(format: "%.3f", results.recallAfterReload))")
+}
+
+func updateCostsCSV(_ results: UpdateCostBench.Results) -> String {
+    let header =
+        "vectorCount,dim,metric,updateCount,buildTimeMs,insertMeanMs,insertQPS,deleteCount,deleteMeanMs,compactMs,saveMs,loadMs,savedBytes,recallAfterInserts,recallAfterDeletes,recallAfterCompact,recallAfterReload"
+    let row = [
+        "\(results.vectorCount)",
+        "\(results.dim)",
+        results.metric.rawValue,
+        "\(results.updateCount)",
+        "\(results.buildTimeMs)",
+        "\(results.insertMeanMs)",
+        "\(results.insertQPS)",
+        "\(results.deleteCount)",
+        "\(results.deleteMeanMs)",
+        "\(results.compactMs)",
+        "\(results.saveMs)",
+        "\(results.loadMs)",
+        "\(results.savedBytes)",
+        "\(results.recallAfterInserts)",
+        "\(results.recallAfterDeletes)",
+        "\(results.recallAfterCompact)",
+        "\(results.recallAfterReload)",
+    ].joined(separator: ",")
+    return header + "\n" + row + "\n"
+}
+
+func updateCostCSVPath(for csvOutPath: String) -> String {
+    if let dot = csvOutPath.lastIndex(of: "."), dot > csvOutPath.startIndex {
+        return "\(csvOutPath[..<dot])-updates\(csvOutPath[dot...])"
+    }
+    return csvOutPath + "-updates"
+}
+
 func printUsage() {
     print("USAGE:")
     print(
@@ -244,6 +295,9 @@ func printUsage() {
     print("  --json-out <path.json>    save JSON report")
     print("  --histogram-out <path>    on a single run, write <path>.histogram.csv and <path>.cdf.csv")
     print("  --metric <cosine|l2|innerproduct|hamming>")
+    print("  --measure-updates        after the query phase, measure insert/delete/reinsert")
+    print("                           and save/load costs plus recall after each mutation")
+    print("  --update-count <n>       number of mutated rows for --measure-updates (default 200)")
     print("  --degree <n>")
     print("  --efsearch <n>")
     print("  --k <n>")
@@ -294,6 +348,8 @@ struct ParsedBenchmarkOptions {
     var compareBackendLabels: [String] = []
 
     var exactSearchLimit: Int?
+    var measureUpdates = false
+    var updateCount = 200
     var ivfpqSubspaces: Int = 8
     var ivfpqNumCentroids: Int = 256
     var ivfpqNumCoarseCentroids: Int = 256
@@ -396,6 +452,16 @@ func parseOptions(from args: [String]) throws -> ParsedBenchmarkOptions {
                 throw BenchmarkDatasetError.invalidDataset("Invalid value for \(arg): \(value)")
             }
             options.exactSearchLimit = parsed
+
+        case "--measure-updates":
+            options.measureUpdates = true
+
+        case "--update-count":
+            let value = try nextValue(for: arg, args: args, index: &index)
+            guard let parsed = Int(value), parsed > 0 else {
+                throw BenchmarkDatasetError.invalidDataset("Invalid value for \(arg): \(value)")
+            }
+            options.updateCount = parsed
 
         case "--ivfpq-subspaces":
             let value = try nextValue(for: arg, args: args, index: &index)
@@ -603,6 +669,29 @@ do {
             try results.latencyDistribution.cdfCSV().write(to: cdfURL, atomically: true, encoding: .utf8)
             print("Saved histogram: \(histogramURL.path)")
             print("Saved CDF: \(cdfURL.path)")
+        }
+
+        if options.measureUpdates {
+            let recallQueries = Array(dataset.testVectors.prefix(min(20, dataset.testVectors.count)))
+            let updateResults = try await UpdateCostBench.run(
+                trainVectors: dataset.trainVectors,
+                queries: recallQueries,
+                metric: baseConfig.metric,
+                configuration: IndexConfiguration(
+                    degree: baseConfig.degree,
+                    metric: baseConfig.metric,
+                    efSearch: baseConfig.efSearch,
+                    exactSearchMaxVectorCount: baseConfig.exactSearchMaxVectorCount
+                ),
+                updateCount: options.updateCount
+            )
+            printUpdateCosts(updateResults)
+            if let csvOutPath = options.csvOutPath {
+                let updatesCSV = updateCostCSVPath(for: csvOutPath)
+                try updateCostsCSV(updateResults).write(
+                    to: URL(fileURLWithPath: updatesCSV), atomically: true, encoding: .utf8)
+                print("Saved update-cost CSV: \(updatesCSV)")
+            }
         }
 
     case .sweep:
