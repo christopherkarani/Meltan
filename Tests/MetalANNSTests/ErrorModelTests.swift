@@ -131,7 +131,7 @@ struct ErrorModelTests {
         var bannedMatches: [String] = []
         for case let fileURL as URL in enumerator where fileURL.pathExtension == "swift" {
             let contents = try String(contentsOf: fileURL, encoding: .utf8)
-            if contents.contains(#"contains("Index capacity exceeded")"#) {
+            if contents.contains("contains(\"Index capacity exceeded\")") {
                 bannedMatches.append(fileURL.path)
             }
             if contents.contains("HNSW layer-0 beam search failed") {
