@@ -40,7 +40,10 @@ extension GraphIndex {
 
         var pendingFlatResults: [SearchResult]? = nil
         if filter == nil,
-            deletedCount == 0,
+            // Exact even with soft deletions: scanning top-(k+deletedCount)
+            // and filtering deleted rows afterwards yields the true top-k
+            // survivors, since each deleted row demotes a survivor by at most
+            // one position.
             MetalANNSCore.FlatGPUSearch.isEligible(
                 vectors: vectors,
                 metric: searchMetric,
@@ -331,12 +334,16 @@ extension GraphIndex {
             await metrics.recordBatchSearch()
         }
 
+        // Exact even with soft deletions: fetch top-(k+deleted) candidates,
+        // then drop deleted rows — each deletion demotes a survivor by at most
+        // one rank, so the filtered list is the true top-k survivors.
+        let deletedCount = softDeletion.deletedCount
+        let batchEffectiveK = min((vectors?.count ?? k), k + deletedCount)
         if let vectors, filter == nil,
-            softDeletion.deletedCount == 0,
             MetalANNSCore.FlatGPUSearch.isEligible(
                 vectors: vectors,
                 metric: metric ?? configuration.metric,
-                k: k,
+                k: batchEffectiveK,
                 maxVectorCount: configuration.exactSearchMaxVectorCount
             )
         {
@@ -345,11 +352,11 @@ extension GraphIndex {
                     context: context,
                     queries: queries,
                     vectors: vectors,
-                    k: k,
+                    k: batchEffectiveK,
                     metric: metric ?? configuration.metric
                 )
                 let mapped = flatResults.map { results in
-                    results.compactMap { result -> SearchResult? in
+                    softDeletion.filterResults(results).compactMap { result -> SearchResult? in
                         let externalID = idMap.externalID(for: result.internalID) ?? ""
                         let numericID = idMap.numericID(for: result.internalID)
                         guard !externalID.isEmpty || numericID != nil else {

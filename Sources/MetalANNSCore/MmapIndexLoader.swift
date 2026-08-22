@@ -310,7 +310,10 @@ private final class MmapRegion: @unchecked Sendable {
     }
 }
 
-private final class MmapVectorStorage: VectorStorage, @unchecked Sendable {
+final class MmapVectorStorage: VectorStorage, @unchecked Sendable {
+    /// True when the mmap buffer is a fully resident row-major Float32
+    /// corpus, i.e. the exact layout consumed by FlatGPUSearch.
+    var isFlatScanEligible: Bool { !isFloat16 && !isBinary }
     let buffer: MTLBuffer
     let dim: Int
     let capacity: Int

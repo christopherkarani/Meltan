@@ -224,6 +224,9 @@ func printUsage() {
         "  MetalANNSBenchmarks --ivfpq                                                    # ANS vs IVFPQ (synthetic if no dataset)"
     )
     print(
+        "  MetalANNSBenchmarks --ops                                                       # build/insert/delete/compact/save/load costs"
+    )
+    print(
         "  MetalANNSBenchmarks --concurrency 8                                            # single run with N in-flight queries"
     )
     print(
@@ -255,6 +258,8 @@ func printUsage() {
         "  --compare <list>            comma-separated backend labels; emits one row per label (NOTE: GraphIndex has no public backend selector — see warning at startup)"
     )
     print("  --ivfpq-subspaces <n>")
+    print("  --ops-insert-count <n>   vectors to insert after build in --ops mode (default 1000)")
+    print("  --ops-delete-count <n>   ids to delete after inserts in --ops mode (default 500)")
     print("  --ivfpq-centroids <n>")
     print("  --ivfpq-coarse-centroids <n>")
     print("  --ivfpq-nprobe <n>")
@@ -269,6 +274,7 @@ struct ParsedBenchmarkOptions {
         case concurrencySweep
         case compare
         case ivfpq
+        case ops
         case help
     }
 
@@ -294,6 +300,8 @@ struct ParsedBenchmarkOptions {
     var compareBackendLabels: [String] = []
 
     var exactSearchLimit: Int?
+    var opsInsertCount: Int = 1_000
+    var opsDeleteCount: Int = 500
     var ivfpqSubspaces: Int = 8
     var ivfpqNumCentroids: Int = 256
     var ivfpqNumCoarseCentroids: Int = 256
@@ -315,6 +323,17 @@ func parseOptions(from args: [String]) throws -> ParsedBenchmarkOptions {
 
         case "--sweep":
             options.mode = .sweep
+
+        case "--ops":
+            options.mode = .ops
+
+        case "--insert-count":
+            let value = try nextValue(for: arg, args: args, index: &index)
+            options.opsInsertCount = try parsePositiveInt(arg, value)
+
+        case "--delete-count":
+            let value = try nextValue(for: arg, args: args, index: &index)
+            options.opsDeleteCount = try parsePositiveInt(arg, value)
 
         case "--ivfpq":
             options.mode = .ivfpq
@@ -840,6 +859,21 @@ do {
             try metadataReport.saveJSON(to: jsonOutPath)
             print("Saved JSON: \(jsonOutPath)")
         }
+
+    case .ops:
+        let opsConfig = OpsBenchmark.Config(
+            vectorCount: options.vectorCount ?? 10_000,
+            insertCount: options.opsInsertCount,
+            deleteCount: options.opsDeleteCount,
+            dim: 128,
+            metric: options.metric ?? .cosine,
+            seed: options.seed ?? 42
+        )
+        print(
+            "== Ops benchmark: n=\(opsConfig.vectorCount) inserts=\(opsConfig.insertCount) deletes=\(opsConfig.deleteCount) metric=\(opsConfig.metric.rawValue) =="
+        )
+        let stages = try await OpsBenchmark.run(config: opsConfig)
+        print(OpsBenchmark.renderTable(stages))
 
     case .ivfpq:
         let datasetSource = try loadOrSyntheticDataset(
