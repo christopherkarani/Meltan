@@ -9,4 +9,8 @@ public enum ANNSError: Error, Sendable {
     case constructionFailed(String)
     case searchFailed(String)
     case indexEmpty
+    case gpuPipelineUnavailable(String)
+    case gpuResourceExhausted(String)
+    case gpuExecutionFailed(String)
+    case indexCapacityExceeded
 }
