@@ -1,6 +1,9 @@
 import MetalANNSCore
 
 public struct IndexConfiguration: Sendable, Codable {
+    /// Default ceiling (1M vectors) for the fused exact-search path.
+    public static let defaultExactSearchMaxVectorCount = 1_000_000
+
     /// Graph out-degree used by NN-Descent and search.
     /// For GPU construction (`NNDescentGPU` + bitonic sort), this must be a power of two and `<= 64`.
     public var degree: Int
@@ -13,6 +16,10 @@ public struct IndexConfiguration: Sendable, Codable {
     public var convergenceThreshold: Float
     public var hnswConfiguration: HNSWConfiguration
     public var repairConfiguration: RepairConfiguration
+    /// Vector-count ceiling for the fused exact-search GPU path (single dispatch
+    /// brute force). `0` disables the path entirely. Above this limit search
+    /// falls back to the graph traversal backend.
+    public var exactSearchMaxVectorCount: Int
 
     public static let `default` = IndexConfiguration(
         degree: 32,
@@ -37,7 +44,8 @@ public struct IndexConfiguration: Sendable, Codable {
         useBinary: Bool = false,
         convergenceThreshold: Float = 0.001,
         hnswConfiguration: HNSWConfiguration = .default,
-        repairConfiguration: RepairConfiguration = .default
+        repairConfiguration: RepairConfiguration = .default,
+        exactSearchMaxVectorCount: Int = IndexConfiguration.defaultExactSearchMaxVectorCount
     ) {
         self.degree = degree
         self.metric = metric
@@ -49,6 +57,7 @@ public struct IndexConfiguration: Sendable, Codable {
         self.convergenceThreshold = convergenceThreshold
         self.hnswConfiguration = hnswConfiguration
         self.repairConfiguration = repairConfiguration
+        self.exactSearchMaxVectorCount = exactSearchMaxVectorCount
     }
 
     /// Returns true when `degree` satisfies GPU NN-Descent kernel constraints.
@@ -91,5 +100,9 @@ public struct IndexConfiguration: Sendable, Codable {
             RepairConfiguration.self,
             forKey: .repairConfiguration
         ) ?? .default
+        exactSearchMaxVectorCount = try container.decodeIfPresent(
+            Int.self,
+            forKey: .exactSearchMaxVectorCount
+        ) ?? IndexConfiguration.defaultExactSearchMaxVectorCount
     }
 }

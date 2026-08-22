@@ -37,15 +37,34 @@ extension GraphIndex {
         }
         let effectiveEf = max(configuration.efSearch, effectiveK)
 
-        let rawResults: [SearchResult]
-        let canAttemptGPU = shouldUseHybridGPUSearch(
-            for: vectors,
-            metric: searchMetric,
-            k: effectiveK,
-            ef: effectiveEf
-        )
+        var pendingFlatResults: [SearchResult]? = nil
+        if filter == nil,
+           deletedCount == 0,
+           MetalANNSCore.FlatGPUSearch.isEligible(
+               vectors: vectors,
+               metric: searchMetric,
+               k: effectiveK,
+               maxVectorCount: configuration.exactSearchMaxVectorCount
+           ) {
+            pendingFlatResults = try? await MetalANNSCore.FlatGPUSearch.search(
+                context: context,
+                query: normalizedQuery,
+                vectors: vectors,
+                k: effectiveK,
+                metric: searchMetric
+            )
+        }
 
-        if let context, canAttemptGPU {
+        let rawResults: [SearchResult]
+        if let flatResults = pendingFlatResults {
+            rawResults = flatResults
+        } else if let context,
+                  shouldUseHybridGPUSearch(
+                      for: vectors,
+                      metric: searchMetric,
+                      k: effectiveK,
+                      ef: effectiveEf
+                  ) {
             do {
                 rawResults = try await SearchGPU.search(
                     context: context,
@@ -299,6 +318,43 @@ extension GraphIndex {
         }
         if let metrics {
             await metrics.recordBatchSearch()
+        }
+
+        if let vectors, filter == nil,
+           softDeletion.deletedCount == 0,
+           MetalANNSCore.FlatGPUSearch.isEligible(
+               vectors: vectors,
+               metric: metric ?? configuration.metric,
+               k: k,
+               maxVectorCount: configuration.exactSearchMaxVectorCount
+           ) {
+            do {
+                let flatResults = try await MetalANNSCore.FlatGPUSearch.batchSearch(
+                    context: context,
+                    queries: queries,
+                    vectors: vectors,
+                    k: k,
+                    metric: metric ?? configuration.metric
+                )
+                let mapped = flatResults.map { results in
+                    results.compactMap { result -> SearchResult? in
+                        let externalID = idMap.externalID(for: result.internalID) ?? ""
+                        let numericID = idMap.numericID(for: result.internalID)
+                        guard !externalID.isEmpty || numericID != nil else {
+                            return nil
+                        }
+                        return SearchResult(
+                            id: externalID,
+                            score: result.score,
+                            internalID: result.internalID,
+                            numericID: numericID
+                        )
+                    }
+                }
+                return mapped.map { Array($0.prefix(k)) }
+            } catch {
+                // Fall through to the per-query path below.
+            }
         }
 
         let maxConcurrency = await batchSearchMaxConcurrency()

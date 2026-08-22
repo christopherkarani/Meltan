@@ -11,6 +11,7 @@ struct BenchmarkRunner {
         var k: Int = 10
         var efSearch: Int = 64
         var metric: Metric = .cosine
+        var exactSearchMaxVectorCount: Int = 1_000_000
     }
 
     struct Results {
@@ -378,7 +379,8 @@ struct BenchmarkRunner {
             configuration: IndexConfiguration(
                 degree: config.degree,
                 metric: config.metric,
-                efSearch: config.efSearch
+                efSearch: config.efSearch,
+                exactSearchMaxVectorCount: config.exactSearchMaxVectorCount
             )
         )
 

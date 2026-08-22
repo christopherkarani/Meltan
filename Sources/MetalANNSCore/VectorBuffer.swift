@@ -59,6 +59,7 @@ public final class VectorBuffer: @unchecked Sendable {
                 guard let baseAddress = source.baseAddress else { return }
                 rawPointer.advanced(by: offset).update(from: baseAddress, count: dim)
             }
+            FlatGPUSearch.invalidateHostNormCache(buffer: buffer)
         }
     }
 
@@ -72,6 +73,7 @@ public final class VectorBuffer: @unchecked Sendable {
                     rawPointer.advanced(by: vecOffset).update(from: baseAddress, count: dim)
                 }
             }
+            FlatGPUSearch.invalidateHostNormCache(buffer: buffer)
         }
     }
 
