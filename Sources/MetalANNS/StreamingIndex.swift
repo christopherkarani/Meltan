@@ -79,7 +79,7 @@ public actor _StreamingIndex {
     private var base: GraphIndex?
     private var delta: GraphIndex?
     private var mergeTask: Task<Void, Error>?
-    private var lastBackgroundMergeError: ANNSError?
+    private var lastBackgroundMergeError: (any Error)?
     private var _isMerging = false
 
     private var pendingVectors: [[Float]] = []
@@ -660,9 +660,7 @@ public actor _StreamingIndex {
                 pendingVectors.removeAll(keepingCapacity: true)
                 pendingIDs.removeAll(keepingCapacity: true)
             } catch let error as ANNSError {
-                guard case .constructionFailed(let message) = error,
-                    message.contains("Index capacity exceeded")
-                else {
+                guard case .indexCapacityExceeded = error else {
                     throw error
                 }
 
@@ -710,12 +708,8 @@ public actor _StreamingIndex {
         Task { [self] in
             do {
                 try await task.value
-            } catch let error as ANNSError {
-                self.recordBackgroundMergeError(error)
             } catch {
-                self.recordBackgroundMergeError(
-                    .constructionFailed("Background merge failed: \(error)")
-                )
+                self.recordBackgroundMergeError(error)
             }
             self.clearMergeTaskReference()
         }
@@ -725,7 +719,7 @@ public actor _StreamingIndex {
         mergeTask = nil
     }
 
-    private func recordBackgroundMergeError(_ error: ANNSError) {
+    private func recordBackgroundMergeError(_ error: any Error) {
         lastBackgroundMergeError = error
     }
 

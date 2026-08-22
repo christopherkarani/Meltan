@@ -22,7 +22,7 @@ extension GraphIndex {
 
         let nextInternalID = Int(idMap.nextInternalID)
         guard nextInternalID < vectors.capacity, nextInternalID < graph.capacity else {
-            throw ANNSError.constructionFailed("Index capacity exceeded; rebuild with larger capacity")
+            throw ANNSError.indexCapacityExceeded
         }
 
         let graphVector = vectors is BinaryVectorBuffer ? Self.quantizeForHamming(vector) : vector
@@ -107,7 +107,7 @@ extension GraphIndex {
 
         let nextInternalID = Int(idMap.nextInternalID)
         guard nextInternalID < vectors.capacity, nextInternalID < graph.capacity else {
-            throw ANNSError.constructionFailed("Index capacity exceeded; rebuild with larger capacity")
+            throw ANNSError.indexCapacityExceeded
         }
 
         let graphVector = vectors is BinaryVectorBuffer ? Self.quantizeForHamming(vector) : vector
@@ -209,7 +209,7 @@ extension GraphIndex {
         guard startSlot + vectors.count <= vectorStorage.capacity,
             startSlot + vectors.count <= graph.capacity
         else {
-            throw ANNSError.constructionFailed("Index capacity exceeded; rebuild with larger capacity")
+            throw ANNSError.indexCapacityExceeded
         }
 
         let slots = Array(startSlot..<(startSlot + vectors.count))
