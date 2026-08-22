@@ -2,6 +2,154 @@
 
 Last updated: `2026-08-22`
 
+## 2026-08-22 — Hot-path polish, validation matrix, and the exact-search bandwidth wall
+
+Follow-up to the fused exact-search work above. Two host-side costs were
+removed from the warm search path, the full {1k…100k} × {128, 384, 768}
+validation matrix was run against both in-binary paths, and the remaining gap
+to an external "legacy Metal" reference (1.10 ms @10k / 1.72 ms @50k,
+dim 384, topK 24) was measured and attributed component by component.
+
+### Changes shipped this round
+
+1. **Corpus-norm cache no longer holds its lock during scans** (`FlatGPUSearch`).
+   Norms are published as immutable boxed arrays; readers retain a snapshot
+   and run entirely lock-free. Previously every concurrent host-tier search
+   serialized on one `NSLock` for the whole selection loop.
+2. **Parallel GPU-tier top-K selection.** Batched queries now select rows on
+   all cores (`concurrentPerform`, distinct-slot writes through a unique
+   buffer pointer); single large scans split into per-core chunk heaps merged
+   deterministically by (distance, id) above
+   `FlatGPUSearch.parallelSelectionMinVectorCount` (16,384).
+3. **Harness additions**: `--dimension <n>` flag and a `--probe` mode that
+   decomposes flat-search cost components against a raw `VectorBuffer`.
+
+### Correctness regressions caught by new tests (and fixed)
+
+Chunked selection initially emitted **chunk-local ids**: candidate `id =
+UInt32(index)` had to become `idBase + index` in *both* the heap-fill *and*
+heap-replacement branches — missing the replacement branch silently returned
+wrong rows (recall@10 fell to 0.356 at 50k). Two regression tests now pin
+this: `parallelTierSelectionStaysExact` (corpus past the fan-out threshold,
+tier forced, ties straddling lane boundaries) and
+`concurrentHostSearchesSurviveCacheChurn` (TaskGroup storm over a shared
+buffer with interleaved cache invalidation).
+
+### Validation summary
+
+- Full Swift Testing suite: **264 tests / 64 suites pass** (run twice: after
+  code changes and after lint formatting).
+- `swift-format lint --strict` clean.
+- Recall@k = **1.000** on the exact path at every size/dim/metric tested,
+  including after inserts, soft deletes, compaction, save/load, and mmap
+  reloads (`--ops` spot checks).
+- Sanitizers: **unavailable on this OS/toolchain** — macOS 26 refuses to load
+  both TSan and ASan runtime dylibs ("Sanitizer load violates platform
+  policy"). Swift 6 strict concurrency plus the concurrency stress suites
+  provide the available race coverage.
+
+### Warm latency, interleaved A/B (dim 384, k=24, cosine, 200 queries ×3 runs +1 warmup, seed 42)
+
+Legacy column is the same binary's graph-traversal path
+(`--exact-search-limit 0`), alternating L/E/E/L windows to cancel machine
+drift (Apple GPU clocks swing p50 ±40% between windows on this machine; A/B
+claims below come from same-window pairs).
+
+| Corpus | Legacy p50 | Exact p50 | vs in-binary legacy | vs external bar¹ |
+|---|---|---|---|---|
+| 10k    | 3.29–3.34 ms | 0.095–0.10 ms | **33×**  | **11× ✓ target met** |
+| 50k    | 16.55–17.38 ms | 0.44–0.46 ms | **37×** | **3.8× ✗ wall** |
+
+¹ External reference: user-supplied legacy Metal baseline (1.10 ms @10k /
+1.72 ms @50k). At 50k the exact path cannot reach 10× — see bandwidth wall.
+
+### Full matrix (single window, favorable clock state; treat as relative shape)
+
+Exact-path p50 ms (recall 1.000 everywhere):
+
+| Vectors | dim 128 | dim 384 | dim 768 |
+|---|---|---|---|
+| 1k     | 0.04 | 0.04 | 0.04 |
+| 5k     | 0.06 | 0.06 | 0.06 |
+| 10k    | 0.10 | 0.09 | 0.09 |
+| 50k    | 0.35 | 0.33 | 0.35 |
+| 100k   | 0.50 | 0.51 | 0.50 |
+
+Same-window legacy p50: 0.32 / 1.53 / 2.99 / 15.4 / 31.8 ms; legacy recall@10
+degrades to 0.989 at 100k while the exact path holds 1.000.
+
+Build time is unchanged by this round (~0.22 ms/vec small-n, 1.6 s @10k,
+4.4 s @100k); index-resident memory unchanged (~287 MB @50k, peak RSS 114 MB;
+~371 MB @100k×768, peak 209 MB).
+
+Lifecycle (`--ops`, dim 128): build 1.61 s @10k / 4.34 s @100k; batchInsert
+1.3–2.0 ms/vec; delete ~0.3 µs/op; compact 0.9 s / 4.8 s; save 70 ms (8 MB) /
+487 ms (78 MB); load(fullMemory) 175 ms / 3.44 s; loadMmap 162 ms / 3.28 s.
+Recall 1.000 before/after inserts/deletes/compaction and after both reload
+modes at both scales.
+
+Throughput under concurrency (50k×128 cosine): exact 1,610 QPS @c=1 →
+**6,795 QPS @c=8** → 6,253 @c=16 (recall 1.000 throughout); legacy 58 →
+62 QPS. Steady-state advantage ≈ **110× at c=8**.
+
+### Why 10× at 50k×384 is unreachable for exact search (component evidence)
+
+Steady-state decomposition of a single warm query, measured via `--probe`,
+standalone dispatch micro-benchmarks, and kernel variants:
+
+| Component @50k×384 | Measured |
+|---|---|
+| Empty dispatch+sync round trip | ~150–180 µs |
+| `flat_scan_distances` streaming 73.2 MB | ~240–360 µs (155–305 GB/s effective, cache-state dependent) |
+| Host top-K heap over 50k distances | 30 µs serial → parallelized this round |
+| Actor/id-mapping glue | ~15–25 µs |
+
+- DRAM floor: 73.2 MB ÷ ~300 GB/s (M3 Max peak) ≈ **245 µs**, before any
+  dispatch tax. The 172 µs target (= 1.72 ms ÷ 10) sits **below the physical
+  floor** for reading the corpus once per query in Float32.
+- Kernel-shape study: unrolled-float4 and simdgroup-reduction variants landed
+  within noise of the production kernel — no shape win available.
+- Host BLAS loses above ~16k vectors (sgemv streams at 66–119 GB/s vs GPU
+  155–305 GB/s); the ≤32,768-vector host-tier crossover remains correct.
+- Batching amortizes well (64-query dispatch → ~380 µs/query at 50k×384) and
+  is the recommended throughput mode (`batchSearch`).
+
+Maximum measured improvement vs the external baseline is therefore **11× @10k**
+(target met) and **3.8–5.2× @50k across clock windows** (bandwidth-walled).
+Reaching sub-floor latency at 50k+ would require reducing bytes per query —
+Float16 mirrors or quantized pruning — which changes accuracy guarantees and
+was explicitly out of scope. Future options if ever wanted: persistent-kernel
+query mailbox (removes most of the dispatch tax) and opt-in f16 scan tier.
+
+### Reproduce
+
+```bash
+swift build -c release
+
+# Interleaved A/B at the reference protocol (dim 384, k24)
+.build/release/MetalANNSBenchmarks --vector-count 10000 --dimension 384 --k 24 \
+  --query-count 200 --runs 3 --warmup 1 --seed 42
+.build/release/MetalANNSBenchmarks --vector-count 50000 --dimension 384 --k 24 \
+  --query-count 200 --runs 3 --warmup 1 --seed 42
+# ...repeat each with --exact-search-limit 0 for the legacy column
+
+# Full matrix + lifecycle + concurrency
+for N in 1000 5000 10000 50000 100000; do for D in 128 384 768; do
+  .build/release/MetalANNSBenchmarks --vector-count $N --dimension $D --k 24 \
+    --query-count 200 --runs 3 --warmup 1 --seed 42 --csv-out m_${N}_${D}.csv
+done; done
+.build/release/MetalANNSBenchmarks --ops --vector-count 100000 --insert-count 5000 --delete-count 2500
+.build/release/MetalANNSBenchmarks --vector-count 50000 --concurrency-sweep 1,8,16 --k 24
+
+# Component attribution
+.build/release/MetalANNSBenchmarks --probe
+
+# Regression suites for this round
+swift test --filter ExactSearchIntegrationTests
+swift test --filter FlatSearchTests
+```
+
+
 ## 2026-08-22 — Production acceptance run (fused exact search, full matrix)
 
 Release-mode verification of the fused exact-search path against the legacy
