@@ -66,6 +66,7 @@ public final class VectorBuffer: @unchecked Sendable {
                 rawPointer.advanced(by: offset).update(from: baseAddress, count: dim)
             }
             FlatGPUSearch.invalidateHostNormCache(buffer: buffer)
+            Int8CodeCache.invalidate(buffer: buffer)
         }
     }
 
@@ -80,6 +81,7 @@ public final class VectorBuffer: @unchecked Sendable {
                 }
             }
             FlatGPUSearch.invalidateHostNormCache(buffer: buffer)
+            Int8CodeCache.invalidate(buffer: buffer)
         }
     }
 

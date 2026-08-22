@@ -16,7 +16,12 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "MetalANNSC",
+            publicHeadersPath: "include"
+        ),
+        .target(
             name: "MetalANNSCore",
+            dependencies: ["MetalANNSC"],
             resources: [.process("Shaders")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
@@ -33,6 +38,7 @@ let package = Package(
             dependencies: [
                 "MetalANNS",
                 "MetalANNSCore",
+                "MetalANNSC",
                 .product(name: "GRDB", package: "GRDB.swift"),
             ],
             swiftSettings: [.swiftLanguageMode(.v6)]
