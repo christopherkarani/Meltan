@@ -49,7 +49,6 @@ extension GraphIndex {
             entryPoint: entryPoint,
             degree: configuration.degree,
             exactSearchMaxVectorCount: configuration.exactSearchMaxVectorCount,
-            baseMetric: configuration.metric,
             softDeletion: softDeletion,
             metadataStore: metadataStore,
             idMap: idMap
@@ -109,7 +108,6 @@ extension GraphIndex {
             entryPoint: entryPoint,
             degree: configuration.degree,
             exactSearchMaxVectorCount: configuration.exactSearchMaxVectorCount,
-            baseMetric: configuration.metric,
             softDeletion: softDeletion,
             metadataStore: metadataStore,
             idMap: idMap

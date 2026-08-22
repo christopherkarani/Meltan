@@ -253,7 +253,6 @@ struct SearchExecutionTests {
             entryPoint: 0,
             degree: 2,
             exactSearchMaxVectorCount: 1_024,
-            baseMetric: .l2,
             softDeletion: softDeletion,
             metadataStore: metadataStore,
             idMap: idMap

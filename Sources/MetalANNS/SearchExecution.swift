@@ -17,7 +17,6 @@ struct SearchRequest: Sendable {
     let entryPoint: UInt32
     let degree: Int
     let exactSearchMaxVectorCount: Int
-    let baseMetric: Metric
     let softDeletion: SoftDeletion
     let metadataStore: MetadataStore
     let idMap: IDMap
