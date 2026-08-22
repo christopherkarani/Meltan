@@ -17,6 +17,11 @@ struct BinaryHeap<Element> {
         siftUp(from: storage.count - 1)
     }
 
+    /// Preallocates backing storage so pushes up to this count never reallocate.
+    mutating func reserveCapacity(_ capacity: Int) {
+        storage.reserveCapacity(capacity)
+    }
+
     @discardableResult
     mutating func pop() -> Element? {
         guard !storage.isEmpty else {
@@ -89,7 +94,9 @@ struct BoundedPriorityBuffer<Element> {
         self.capacity = max(0, capacity)
         self.outranks = outranks
         // Keep the worst element at the root so replacement is O(log k).
-        self.heap = BinaryHeap(sort: { lhs, rhs in outranks(rhs, lhs) })
+        var heap = BinaryHeap(sort: { lhs, rhs in outranks(rhs, lhs) })
+        heap.reserveCapacity(self.capacity)
+        self.heap = heap
     }
 
     var count: Int { heap.count }
@@ -153,6 +160,7 @@ package struct BoundedSortedList<Element> {
     package init(capacity: Int, outranks: @escaping @Sendable (Element, Element) -> Bool) {
         self.capacity = max(0, capacity)
         self.outranks = outranks
+        elements.reserveCapacity(self.capacity)
     }
 
     var count: Int { elements.count }
