@@ -91,9 +91,6 @@ func makeBenchmarkConfig(
     if let exactSearchLimit = options.exactSearchLimit {
         config.exactSearchMaxVectorCount = exactSearchLimit
     }
-    if let dimension = options.dimension {
-        config.dim = max(1, dimension)
-    }
 
     return config
 }
@@ -237,8 +234,12 @@ func printUsage() {
     print(
         "  MetalANNSBenchmarks --compare cpu,gpu,gpu-adc                                   # multi-backend compare (see note)"
     )
+    print(
+        "  MetalANNSBenchmarks --probe                                                     # flat exact-search component probe"
+    )
     print("\nOPTIONS:")
     print("  --query-count <n>        override number of query vectors")
+    print("  --dimension <n>         dimension for synthetic vectors (default: 128)")
     print("  --seed <n>               deterministic seed for synthetic dataset")
     print("  --runs <n>               number of measured benchmark passes")
     print("  --warmup <n>             number of warmup passes")
@@ -267,6 +268,7 @@ func printUsage() {
     print("  --ivfpq-coarse-centroids <n>")
     print("  --ivfpq-nprobe <n>")
     print("  --ivfpq-iterations <n>")
+    print("  --probe                  run the flat exact-search component probe")
     print("  --help")
 }
 
@@ -562,7 +564,7 @@ do {
             dataset = BenchmarkDataset.synthetic(
                 trainCount: options.vectorCount ?? 1000,
                 testCount: queryCount,
-                dimension: 128,
+                dimension: options.dimension ?? 128,
                 k: max(100, options.k ?? 10),
                 metric: options.metric ?? .cosine,
                 seed: options.seed ?? 42
@@ -655,7 +657,7 @@ do {
                 path: nil,
                 baseConfig: BenchmarkRunner.Config(
                     vectorCount: options.vectorCount ?? 1000,
-                    dim: 128,
+                    dim: options.dimension ?? 128,
                     queryCount: options.queryCount ?? 100,
                     k: options.k ?? 10,
                     efSearch: options.efSearch ?? 64,
@@ -739,7 +741,7 @@ do {
                 path: nil,
                 baseConfig: BenchmarkRunner.Config(
                     vectorCount: options.vectorCount ?? 1000,
-                    dim: 128,
+                    dim: options.dimension ?? 128,
                     queryCount: options.queryCount ?? 100,
                     k: options.k ?? 10,
                     efSearch: options.efSearch ?? 64,
@@ -821,7 +823,7 @@ do {
                 path: nil,
                 baseConfig: BenchmarkRunner.Config(
                     vectorCount: 1000,
-                    dim: 128,
+                    dim: options.dimension ?? 128,
                     queryCount: options.queryCount ?? 100,
                     k: options.k ?? 10,
                     efSearch: options.efSearch ?? 64,
@@ -884,7 +886,7 @@ do {
             vectorCount: options.vectorCount ?? 10_000,
             insertCount: options.opsInsertCount,
             deleteCount: options.opsDeleteCount,
-            dim: 128,
+            dim: options.dimension ?? 128,
             metric: options.metric ?? .cosine,
             seed: options.seed ?? 42
         )
@@ -899,7 +901,7 @@ do {
             path: options.datasetPath,
             baseConfig: BenchmarkRunner.Config(
                 vectorCount: 1000,
-                dim: 128,
+                dim: options.dimension ?? 128,
                 queryCount: options.queryCount ?? 100,
                 k: options.k ?? 10,
                 efSearch: options.efSearch ?? 64,

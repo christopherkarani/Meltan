@@ -215,10 +215,15 @@ public enum FlatGPUSearch {
         init(count: Int) {
             let capacity = max(count, 1)
             self.pointer = UnsafeMutablePointer<Float>.allocate(capacity: capacity)
-            self.count = capacity
+            self.count = count
         }
 
-        deinit { pointer.deallocate() }
+        deinit {
+            if count > 0 {
+                pointer.deinitialize(count: count)
+            }
+            pointer.deallocate()
+        }
     }
 
     // Small fixed-capacity LRU synchronized via NSLock; the lock guards
@@ -400,13 +405,14 @@ public enum FlatGPUSearch {
 
         let box = CachedCorpusNorms(count: vectorCount)
         norms.withUnsafeBufferPointer { source in
-            box.pointer.update(from: source.baseAddress!, count: vectorCount)
+            box.pointer.initialize(from: source.baseAddress!, count: vectorCount)
         }
         normCache.store(box, for: key)
         // Hand out whichever entry is canonical now (a racing writer may have
         // published its own); every published box holds valid norms for the
         // buffer state it was computed over.
-        body(UnsafePointer((normCache.get(key) ?? box).pointer))
+        let published = normCache.get(key) ?? box
+        body(UnsafePointer(published.pointer))
     }
 
     private static func hostScan(
@@ -670,6 +676,7 @@ public enum FlatGPUSearch {
             to: Float.self,
             capacity: max(queryCount * vectorCount, 1)
         )
+        let concurrentBasePointer = ConcurrentReadPointer(pointer: UnsafePointer(basePointer))
         let resultK = min(topK, vectorCount)
 
         var results = [[SearchResult]](repeating: [], count: queryCount)
@@ -681,7 +688,7 @@ public enum FlatGPUSearch {
                 let slot = ConcurrentSlotBuffer(buffer: buffer)
                 DispatchQueue.concurrentPerform(iterations: queryCount) { queryIndex in
                     slot[queryIndex] = selectRow(
-                        basePointer.advanced(by: queryIndex * vectorCount),
+                        concurrentBasePointer.advanced(by: queryIndex * vectorCount),
                         count: vectorCount,
                         resultK: resultK
                     )
@@ -695,7 +702,7 @@ public enum FlatGPUSearch {
             let lanes = min(activeCores, vectorCount / parallelSelectionMinVectorCount)
             if lanes > 1 {
                 results[0] = selectRowParallel(
-                    basePointer,
+                    concurrentBasePointer.pointer,
                     count: vectorCount,
                     resultK: resultK,
                     lanes: lanes
@@ -704,7 +711,7 @@ public enum FlatGPUSearch {
             }
         }
 
-        results[0] = selectRow(basePointer, count: vectorCount, resultK: resultK)
+        results[0] = selectRow(concurrentBasePointer.pointer, count: vectorCount, resultK: resultK)
         return results
     }
 
@@ -829,6 +836,7 @@ public enum FlatGPUSearch {
         lanes: Int
     ) -> [SearchResult] {
         let chunkSize = count / lanes
+        let concurrentRow = ConcurrentReadPointer(pointer: row)
         var laneEntries = [[CandidateEntry]](repeating: [], count: lanes)
         laneEntries.withUnsafeMutableBufferPointer { buffer in
             let slots = ConcurrentSlotBuffer(buffer: buffer)
@@ -836,7 +844,7 @@ public enum FlatGPUSearch {
                 let start = lane * chunkSize
                 let end = lane == lanes - 1 ? count : start + chunkSize
                 slots[lane] = boundedTopK(
-                    row + start,
+                    concurrentRow.advanced(by: start),
                     count: end - start,
                     topK: resultK,
                     idBase: UInt32(start)
@@ -849,6 +857,16 @@ public enum FlatGPUSearch {
         return merged.prefix(resultK).map { entry in
             SearchResult(id: "", score: entry.distance, internalID: entry.id)
         }
+    }
+}
+
+/// Unchecked-Sendable read-only view over a pointer whose owner keeps the
+/// backing storage alive for the synchronous `concurrentPerform` scope.
+private struct ConcurrentReadPointer<Element>: @unchecked Sendable {
+    let pointer: UnsafePointer<Element>
+
+    func advanced(by offset: Int) -> UnsafePointer<Element> {
+        pointer.advanced(by: offset)
     }
 }
 
