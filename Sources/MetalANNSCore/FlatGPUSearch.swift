@@ -54,6 +54,12 @@ public enum FlatGPUSearch {
         return first
     }
 
+    /// Exact batched nearest-neighbor search.
+    ///
+    /// The GPU tier reads `vectors.buffer` as row-major Float32; callers must
+    /// only pass storage with that layout (e.g. via `isEligible`). Storage with
+    /// other layouts falls back to the correct host scan below
+    /// `hostTierMaxVectorCount` and should not be routed here above it.
     public static func batchSearch(
         context: MetalContext?,
         queries: [[Float]],
@@ -131,17 +137,19 @@ public enum FlatGPUSearch {
     // MARK: - Host tier (small corpora, no GPU dispatch)
 
     /// Eligibility gate for the flat exact-search path.
-    /// Excludes binary/hamming workloads, Float16 storage, and disk-backed
-    /// buffers whose `.buffer` is only a per-vector staging window.
+    ///
+    /// The GPU kernel indexes raw Float32 rows in `vectors.buffer`, so only
+    /// `VectorBuffer` qualifies: it is the sole storage whose buffer is a fully
+    /// resident, row-major Float32 corpus. Binary-packed, Float16, disk-backed
+    /// staging windows, and mmap-backed storage are excluded structurally by
+    /// this type check rather than by per-type flags.
     public static func isEligible(
         vectors: any VectorStorage,
         metric: Metric,
         k: Int,
         maxVectorCount: Int
     ) -> Bool {
-        guard !(vectors is BinaryVectorBuffer) else { return false }
-        guard !(vectors is DiskBackedVectorBuffer) else { return false }
-        guard !vectors.isFloat16 else { return false }
+        guard vectors is VectorBuffer else { return false }
         guard metric != .hamming else { return false }
         guard k >= 1, k <= maxTopK else { return false }
         guard vectors.count >= minEligibleVectorCount else { return false }
@@ -605,11 +613,9 @@ public enum FlatGPUSearch {
         let pointer = buffer.contents().bindMemory(to: Float.self, capacity: max(queries.count, 1))
         for (index, query) in queries.enumerated() {
             var sum: Float = 0
-            var accumulator: Float = 0
             for value in query {
-                accumulator += value * value
+                sum += value * value
             }
-            sum = accumulator
             pointer[index] = sum
         }
     }

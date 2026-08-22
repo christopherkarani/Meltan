@@ -214,5 +214,13 @@ struct FlatSearchTests {
         #expect(!FlatGPUSearch.isEligible(vectors: goodBuffer, metric: .cosine, k: 257, maxVectorCount: 1_000_000))
         #expect(!FlatGPUSearch.isEligible(vectors: goodBuffer, metric: .cosine, k: 10, maxVectorCount: 0))
         #expect(!FlatGPUSearch.isEligible(vectors: goodBuffer, metric: .cosine, k: 10, maxVectorCount: 100))
+
+        let halfBuffer = try Float16VectorBuffer(capacity: 500, dim: 16, device: context.device)
+        halfBuffer.setCount(500)
+        #expect(!FlatGPUSearch.isEligible(vectors: halfBuffer, metric: .cosine, k: 10, maxVectorCount: 1_000_000))
+
+        let binaryBuffer = try BinaryVectorBuffer(capacity: 500, dim: 16, device: context.device)
+        binaryBuffer.setCount(500)
+        #expect(!FlatGPUSearch.isEligible(vectors: binaryBuffer, metric: .cosine, k: 10, maxVectorCount: 1_000_000))
     }
 }

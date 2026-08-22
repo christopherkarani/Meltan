@@ -41,6 +41,12 @@ public final class VectorBuffer: @unchecked Sendable {
         self.rawPointer = buffer.contents().bindMemory(to: Float.self, capacity: max(elementCount, 1))
     }
 
+    deinit {
+        // Drop cached corpus norms before the MTLBuffer is released so a
+        // recycled buffer address can never be served a predecessor's norms.
+        FlatGPUSearch.invalidateHostNormCache(buffer: buffer)
+    }
+
     public func setCount(_ newCount: Int) {
         lock.withLock { _count = newCount }
     }

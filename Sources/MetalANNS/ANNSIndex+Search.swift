@@ -46,13 +46,20 @@ extension GraphIndex {
                k: effectiveK,
                maxVectorCount: configuration.exactSearchMaxVectorCount
            ) {
-            pendingFlatResults = try? await MetalANNSCore.FlatGPUSearch.search(
-                context: context,
-                query: normalizedQuery,
-                vectors: vectors,
-                k: effectiveK,
-                metric: searchMetric
-            )
+            do {
+                pendingFlatResults = try await MetalANNSCore.FlatGPUSearch.search(
+                    context: context,
+                    query: normalizedQuery,
+                    vectors: vectors,
+                    k: effectiveK,
+                    metric: searchMetric
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // Fall back to the graph traversal backend below.
+                pendingFlatResults = nil
+            }
         }
 
         let rawResults: [SearchResult]
@@ -352,6 +359,8 @@ extension GraphIndex {
                     }
                 }
                 return mapped.map { Array($0.prefix(k)) }
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 // Fall through to the per-query path below.
             }
