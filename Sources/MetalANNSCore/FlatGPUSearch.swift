@@ -33,9 +33,10 @@ public enum FlatGPUSearch {
         query: [Float],
         vectors: any VectorStorage,
         k: Int,
-        metric: Metric
+        metric: Metric,
+        tierOverride: Int? = nil
     ) async throws -> [SearchResult] {
-        if shouldUseHostPath(vectors: vectors, k: k) {
+        if shouldUseHostPath(vectors: vectors, k: k, tierOverride: tierOverride) {
             return hostSearch(query: query, vectors: vectors, k: k, metric: metric)
         }
         guard let context else {
@@ -46,7 +47,8 @@ public enum FlatGPUSearch {
             queries: [query],
             vectors: vectors,
             k: k,
-            metric: metric
+            metric: metric,
+            tierOverride: tierOverride
         )
         guard let first = batches.first else {
             throw ANNSError.searchFailed("FlatGPUSearch produced no results")
@@ -65,7 +67,8 @@ public enum FlatGPUSearch {
         queries: [[Float]],
         vectors: any VectorStorage,
         k: Int,
-        metric: Metric
+        metric: Metric,
+        tierOverride: Int? = nil
     ) async throws -> [[SearchResult]] {
         guard !queries.isEmpty else { return [] }
         guard k > 0 else { return Array(repeating: [], count: queries.count) }
@@ -83,7 +86,7 @@ public enum FlatGPUSearch {
             throw ANNSError.dimensionMismatch(expected: dim, got: query.count)
         }
 
-        if shouldUseHostPath(vectors: vectors, k: k) || context == nil {
+        if shouldUseHostPath(vectors: vectors, k: k, tierOverride: tierOverride) || context == nil {
             return queries.map { hostSearch(query: $0, vectors: vectors, k: k, metric: metric) }
         }
 
@@ -140,22 +143,27 @@ public enum FlatGPUSearch {
     /// Eligibility gate for the flat exact-search path.
     ///
     /// The GPU kernel indexes raw Float32 rows in `vectors.buffer`, so only
-    /// `VectorBuffer` qualifies: it is the sole storage whose buffer is a fully
-    /// resident, row-major Float32 corpus. Binary-packed, Float16, disk-backed
-    /// staging windows, and mmap-backed storage are excluded structurally by
-    /// this type check rather than by per-type flags.
+    /// storage with that layout qualifies: `VectorBuffer` (fully resident,
+    /// row-major Float32) and Float32-mode `MmapVectorStorage` (zero-copy
+    /// file pages wrapped in a shared MTLBuffer — identical row layout).
+    /// Binary-packed, Float16, and disk-backed staging windows are excluded
+    /// structurally rather than by per-type flags.
     public static func isEligible(
         vectors: any VectorStorage,
         metric: Metric,
         k: Int,
         maxVectorCount: Int
     ) -> Bool {
-        guard vectors is VectorBuffer else { return false }
+        guard vectors is VectorBuffer || isEligibleMmapStorage(vectors) else { return false }
         guard metric != .hamming else { return false }
         guard k >= 1, k <= maxTopK else { return false }
         guard vectors.count >= minEligibleVectorCount else { return false }
         guard maxVectorCount > 0, vectors.count <= maxVectorCount else { return false }
         return true
+    }
+
+    private static func isEligibleMmapStorage(_ vectors: any VectorStorage) -> Bool {
+        (vectors as? MmapVectorStorage)?.isFlatScanEligible == true
     }
 
     /// Below this vector count the host BLAS scan beats a GPU dispatch round
@@ -165,8 +173,12 @@ public enum FlatGPUSearch {
     /// pays a fixed submission tax then reads at ~150-200 GB/s.
     static let hostTierMaxVectorCount = 32768
 
-    private static func shouldUseHostPath(vectors: any VectorStorage, k: Int) -> Bool {
-        vectors.count <= hostTierMaxVectorCount
+    private static func shouldUseHostPath(
+        vectors: any VectorStorage,
+        k: Int,
+        tierOverride: Int?
+    ) -> Bool {
+        vectors.count <= (tierOverride ?? hostTierMaxVectorCount)
     }
 
     /// Clears cached host-tier corpus norms. Called by mutable storage on
