@@ -58,6 +58,93 @@ struct BoundedSelectionTests {
             }
             let expected = Array(stream.sorted(by: <).prefix(capacity))
             #expect(buffer.sortedElements() == expected, "trial \(trial)")
+            #expect(buffer.heapsortedElements() == expected, "heapsorted trial \(trial)")
+        }
+    }
+
+    @Test("Heapsorted extraction has pinned order for fully tied input")
+    func heapsortedExtractionTieOrderPinned() {
+        var buffer = BoundedPriorityBuffer<(score: Float, id: UInt32)>(capacity: 4) {
+            $0.score < $1.score
+        }
+        for id in UInt32(0)..<UInt32(4) {
+            buffer.insert((score: 5, id: id))
+        }
+        #expect(buffer.heapsortedElements().map(\.id) == [1, 2, 3, 0])
+    }
+
+    // MARK: - Bounded sorted list
+
+    @Test("Sorted list keeps best-first order with newest-wins ties")
+    func sortedListOrderingAndTies() {
+        var list = BoundedSortedList<(score: Int, tag: String)>(capacity: 3) { $0.score < $1.score }
+        list.insert((5, "old"))
+        list.insert((5, "new"))
+        #expect(list.elements.map(\.tag) == ["new", "old"])
+
+        list.insert((3, "c3"))
+        list.insert((4, "d4"))
+        #expect(list.elements.map(\.tag) == ["c3", "d4", "new"])
+
+        list.insert((5, "rejected"))
+        #expect(list.elements.map(\.tag) == ["c3", "d4", "new"])
+    }
+
+    @Test("Sorted list with zero capacity stores nothing")
+    func sortedListZeroCapacity() {
+        var list = BoundedSortedList<Int>(capacity: 0) { $0 < $1 }
+        list.insert(contentsOf: [3, 1, 2])
+        #expect(list.count == 0)
+        #expect(list.elements.isEmpty)
+    }
+
+    private struct ScoredItem {
+        let id: Int
+        let score: Float
+    }
+
+    @Test("Sorted list matches linear-scan reference on seeded streams")
+    func sortedListMatchesReference() {
+        func referenceInsert(_ list: inout [ScoredItem], _ item: ScoredItem, capacity: Int) {
+            guard capacity > 0 else {
+                return
+            }
+            if list.count == capacity, let worst = list.last, !(item.score < worst.score) {
+                return
+            }
+            var index = 0
+            while index < list.count, list[index].score < item.score {
+                index += 1
+            }
+            list.insert(item, at: index)
+            if list.count > capacity {
+                list.removeLast()
+            }
+        }
+
+        var rng = SeededGenerator(state: 4096)
+        for trial in 0..<24 {
+            let length = Int.random(in: 1...200, using: &rng)
+            let capacity = Int.random(in: 1...40, using: &rng)
+            let stream = (0..<length).map { index -> ScoredItem in
+                var score = Float.random(in: -10...10, using: &rng)
+                if trial % 2 == 0 {
+                    score = (score * 4).rounded(.toNearestOrAwayFromZero) / 4
+                }
+                return ScoredItem(id: index, score: score)
+            }
+
+            var list = BoundedSortedList<ScoredItem>(capacity: capacity) { $0.score < $1.score }
+            list.insert(contentsOf: stream)
+
+            var reference: [ScoredItem] = []
+            for item in stream {
+                referenceInsert(&reference, item, capacity: capacity)
+            }
+
+            #expect(list.count == min(capacity, length), "trial \(trial)")
+            #expect(list.elements.map(\.id) == reference.map(\.id), "trial \(trial)")
+            #expect(list.elements.map(\.score) == reference.map(\.score), "trial \(trial)")
         }
     }
 
