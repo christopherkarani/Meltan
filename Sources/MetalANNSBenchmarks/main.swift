@@ -234,8 +234,12 @@ func printUsage() {
     print(
         "  MetalANNSBenchmarks --compare cpu,gpu,gpu-adc                                   # multi-backend compare (see note)"
     )
+    print(
+        "  MetalANNSBenchmarks --probe                                                     # flat exact-search component probe"
+    )
     print("\nOPTIONS:")
     print("  --query-count <n>        override number of query vectors")
+    print("  --dimension <n>         dimension for synthetic vectors (default: 128)")
     print("  --seed <n>               deterministic seed for synthetic dataset")
     print("  --runs <n>               number of measured benchmark passes")
     print("  --warmup <n>             number of warmup passes")
@@ -264,6 +268,7 @@ func printUsage() {
     print("  --ivfpq-coarse-centroids <n>")
     print("  --ivfpq-nprobe <n>")
     print("  --ivfpq-iterations <n>")
+    print("  --probe                  run the flat exact-search component probe")
     print("  --help")
 }
 
@@ -275,6 +280,7 @@ struct ParsedBenchmarkOptions {
         case compare
         case ivfpq
         case ops
+        case probe
         case help
     }
 
@@ -285,6 +291,7 @@ struct ParsedBenchmarkOptions {
     var jsonOutPath: String?
     var queryCount: Int?
     var vectorCount: Int?
+    var dimension: Int?
     var seed: Int? = 42
     var repeatRuns: Int = 1
     var warmupRuns: Int = 0
@@ -307,6 +314,8 @@ struct ParsedBenchmarkOptions {
     var ivfpqNumCoarseCentroids: Int = 256
     var ivfpqNprobe: Int = 8
     var ivfpqTrainingIterations: Int = 10
+    var probeVectorCounts: [Int] = [10_000, 50_000, 100_000]
+    var probeDims: [Int] = [128, 384, 768]
 }
 
 func parseOptions(from args: [String]) throws -> ParsedBenchmarkOptions {
@@ -326,6 +335,9 @@ func parseOptions(from args: [String]) throws -> ParsedBenchmarkOptions {
 
         case "--ops":
             options.mode = .ops
+
+        case "--probe":
+            options.mode = .probe
 
         case "--insert-count":
             let value = try nextValue(for: arg, args: args, index: &index)
@@ -360,6 +372,9 @@ func parseOptions(from args: [String]) throws -> ParsedBenchmarkOptions {
                 throw BenchmarkDatasetError.invalidDataset("Invalid --vector-count value: \(value)")
             }
             options.vectorCount = parsed
+
+        case "--dimension", "--dim":
+            options.dimension = try parsePositiveInt(arg, try nextValue(for: arg, args: args, index: &index))
 
         case "--seed":
             let value = try nextValue(for: arg, args: args, index: &index)
@@ -532,6 +547,12 @@ do {
         printUsage()
         exit(0)
 
+    case .probe:
+        try await FlatSearchProbe.run(
+            vectorCounts: options.probeVectorCounts,
+            dims: options.probeDims)
+        exit(0)
+
     case .single:
         var datasetLabel = "synthetic"
         let dataset: BenchmarkDataset
@@ -543,7 +564,7 @@ do {
             dataset = BenchmarkDataset.synthetic(
                 trainCount: options.vectorCount ?? 1000,
                 testCount: queryCount,
-                dimension: 128,
+                dimension: options.dimension ?? 128,
                 k: max(100, options.k ?? 10),
                 metric: options.metric ?? .cosine,
                 seed: options.seed ?? 42
@@ -636,7 +657,7 @@ do {
                 path: nil,
                 baseConfig: BenchmarkRunner.Config(
                     vectorCount: options.vectorCount ?? 1000,
-                    dim: 128,
+                    dim: options.dimension ?? 128,
                     queryCount: options.queryCount ?? 100,
                     k: options.k ?? 10,
                     efSearch: options.efSearch ?? 64,
@@ -720,7 +741,7 @@ do {
                 path: nil,
                 baseConfig: BenchmarkRunner.Config(
                     vectorCount: options.vectorCount ?? 1000,
-                    dim: 128,
+                    dim: options.dimension ?? 128,
                     queryCount: options.queryCount ?? 100,
                     k: options.k ?? 10,
                     efSearch: options.efSearch ?? 64,
@@ -802,7 +823,7 @@ do {
                 path: nil,
                 baseConfig: BenchmarkRunner.Config(
                     vectorCount: 1000,
-                    dim: 128,
+                    dim: options.dimension ?? 128,
                     queryCount: options.queryCount ?? 100,
                     k: options.k ?? 10,
                     efSearch: options.efSearch ?? 64,
@@ -865,7 +886,7 @@ do {
             vectorCount: options.vectorCount ?? 10_000,
             insertCount: options.opsInsertCount,
             deleteCount: options.opsDeleteCount,
-            dim: 128,
+            dim: options.dimension ?? 128,
             metric: options.metric ?? .cosine,
             seed: options.seed ?? 42
         )
@@ -880,7 +901,7 @@ do {
             path: options.datasetPath,
             baseConfig: BenchmarkRunner.Config(
                 vectorCount: 1000,
-                dim: 128,
+                dim: options.dimension ?? 128,
                 queryCount: options.queryCount ?? 100,
                 k: options.k ?? 10,
                 efSearch: options.efSearch ?? 64,
