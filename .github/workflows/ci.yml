@@ -12,9 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
-
       - name: Build (Debug)
         run: swift build
 
@@ -22,7 +19,7 @@ jobs:
         run: swift build -c release
 
       - name: Run Tests
-        run: swift test --filter '!FullGPUSearchTests'
+        run: swift test --skip FullGPUSearchTests
         timeout-minutes: 15
 
   lint:
@@ -30,11 +27,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
-
-      - name: Install SwiftFormat
-        run: brew install swiftformat
-
       - name: Lint
-        run: swiftformat --lint --config .swift-format .
+        run: swift-format lint --strict --recursive Sources Tests
