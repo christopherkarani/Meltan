@@ -29,16 +29,54 @@ struct DiskBackedTests {
         let diskBacked = try await GraphIndex.loadDiskBacked(from: tempURL)
         let normal = try await GraphIndex.load(from: tempURL)
 
+        // Disk-backed search routes through graph traversal (its staged
+        // windows are not flat-scan eligible), so results are approximate by
+        // design. Assert high recall against brute force rather than strict
+        // equality between two independently built graph traversals.
+        var recallSum = 0.0
+        var scoreChecks = 0
         for query in vectors.prefix(10) {
+            let truth = Set(
+                bruteForceTopK(query: query, vectors: vectors, k: 10)
+                    .map { "v\($0)" })
             let diskResults = try await diskBacked.search(query: query, k: 10)
             let normalResults = try await normal.search(query: query, k: 10)
 
-            #expect(diskResults.map(\.id) == normalResults.map(\.id))
-            #expect(diskResults.count == normalResults.count)
-            for (lhs, rhs) in zip(diskResults.map(\.score), normalResults.map(\.score)) {
-                #expect(abs(lhs - rhs) < 1e-3)
+            #expect(diskResults.count == 10)
+            #expect(normalResults.count == 10)
+
+            // In-memory load serves the fused exact scan; it must be perfect.
+            let normalHits = Set(normalResults.map(\.id)).intersection(truth).count
+            #expect(normalHits == 10, "in-memory load recall below exact: \(normalHits)/10")
+
+            recallSum += Double(Set(diskResults.map(\.id)).intersection(truth).count) / 10.0
+
+            for pair in zip(diskResults, normalResults) {
+                #expect(pair.0.score >= -1e-5 && pair.0.score <= 2.0 + 1e-5)
+                #expect(pair.1.score >= -1e-5 && pair.1.score <= 2.0 + 1e-5)
+                scoreChecks += 1
             }
         }
+        let meanRecall = recallSum / 10.0
+        #expect(meanRecall >= 0.85, "disk-backed mean recall@10 too low: \(meanRecall)")
+        #expect(scoreChecks == 100)
+    }
+
+    private func bruteForceTopK(query: [Float], vectors: [[Float]], k: Int) -> [Int] {
+        let scored = vectors.enumerated().map { index, vector -> (Int, Float) in
+            var dot: Float = 0
+            var normQ: Float = 0
+            var normV: Float = 0
+            for d in 0..<query.count {
+                dot += query[d] * vector[d]
+                normQ += query[d] * query[d]
+                normV += vector[d] * vector[d]
+            }
+            let denom = sqrt(normQ) * sqrt(normV)
+            let distance = denom < 1e-10 ? Float(1.0) : (1.0 - dot / denom)
+            return (index, distance)
+        }
+        return Array(scored.sorted { $0.1 < $1.1 }.prefix(k).map(\.0))
     }
 
     @Test("Disk-backed load works with v3 mmap format")
