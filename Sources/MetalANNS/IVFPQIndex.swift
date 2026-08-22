@@ -16,7 +16,7 @@ public actor _IVFPQIndex: Sendable {
         let idMap: IDMap
     }
 
-    private static let persistenceMagic: [UInt8] = [0x49, 0x56, 0x46, 0x50] // "IVFP"
+    private static let persistenceMagic: [UInt8] = [0x49, 0x56, 0x46, 0x50]  // "IVFP"
     private static let persistenceVersion: UInt32 = 1
 
     private let config: IVFPQConfiguration
@@ -233,11 +233,12 @@ public actor _IVFPQIndex: Sendable {
 
     public func estimatedMemoryBytes() -> Int {
         let coarseBytes = coarseCentroids.count * dimension * MemoryLayout<Float>.stride
-        let codebookBytes: Int = if let pq {
-            pq.numSubspaces * pq.centroidsPerSubspace * pq.subspaceDimension * MemoryLayout<Float>.stride
-        } else {
-            0
-        }
+        let codebookBytes: Int =
+            if let pq {
+                pq.numSubspaces * pq.centroidsPerSubspace * pq.subspaceDimension * MemoryLayout<Float>.stride
+            } else {
+                0
+            }
         let vectorCodeBytes = vectorBuffer?.compressedCodeBytes ?? 0
         let invertedListBytes = invertedLists.reduce(0) { partial, list in
             partial + (list.count * MemoryLayout<UInt32>.stride)
@@ -425,17 +426,21 @@ public actor _IVFPQIndex: Sendable {
         var distances: [Float] = []
         distances.reserveCapacity(candidateIDs.count)
         for internalID in candidateIDs {
-            guard let distance = vectorBuffer.withCode(at: Int(internalID), { code in
-                guard code.count == pq.numSubspaces else {
-                    return Float.greatestFiniteMagnitude
-                }
+            guard
+                let distance = vectorBuffer.withCode(
+                    at: Int(internalID),
+                    { code in
+                        guard code.count == pq.numSubspaces else {
+                            return Float.greatestFiniteMagnitude
+                        }
 
-                var total: Float = 0
-                for subspace in 0..<pq.numSubspaces {
-                    total += table[(subspace * pq.centroidsPerSubspace) + Int(code[subspace])]
-                }
-                return total
-            }) else {
+                        var total: Float = 0
+                        for subspace in 0..<pq.numSubspaces {
+                            total += table[(subspace * pq.centroidsPerSubspace) + Int(code[subspace])]
+                        }
+                        return total
+                    })
+            else {
                 distances.append(Float.greatestFiniteMagnitude)
                 continue
             }

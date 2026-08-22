@@ -1,4 +1,5 @@
 import Testing
+
 @testable import MetalANNSCore
 
 @Suite("GraphBuffer Tests")

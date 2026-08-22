@@ -1,7 +1,8 @@
 import Metal
 import Testing
-@testable import MetalANNSCore
+
 @testable import MetalANNS
+@testable import MetalANNSCore
 
 @Suite("Metal Distance Shader Tests")
 struct MetalDistanceTests {
@@ -21,7 +22,7 @@ struct MetalDistanceTests {
     @Test("GPU cosine matches CPU for 1000 random 128-dim vectors")
     func gpuVsCpuCosine() async throws {
         #if targetEnvironment(simulator)
-        return
+            return
         #endif
 
         let dim = 128
@@ -64,7 +65,7 @@ struct MetalDistanceTests {
     @Test("GPU L2 matches CPU for 1000 random 128-dim vectors")
     func gpuVsCpuL2() async throws {
         #if targetEnvironment(simulator)
-        return
+            return
         #endif
 
         let dim = 128

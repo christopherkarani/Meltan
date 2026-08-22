@@ -1,6 +1,6 @@
 import Foundation
-import SQLite3
 import MetalANNSCore
+import SQLite3
 
 enum SQLiteStructuredStore {
     private static let defaultKey = "state"

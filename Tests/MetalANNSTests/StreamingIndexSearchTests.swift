@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import MetalANNS
 @testable import MetalANNSCore
 
@@ -7,10 +8,11 @@ import Testing
 struct StreamingIndexSearchTests {
     @Test("Search finds base and delta")
     func searchFindsBaseAndDelta() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 200,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 200,
+                mergeStrategy: .blocking
+            ))
 
         let baseVectors = (0..<100).map { makeVector(row: $0, dim: 16) }
         let baseIDs = (0..<100).map { "b\($0)" }
@@ -27,10 +29,11 @@ struct StreamingIndexSearchTests {
 
     @Test("Recall after merge")
     func recallAfterMerge() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 100,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 100,
+                mergeStrategy: .blocking
+            ))
 
         var allVectors: [[Float]] = []
         var allIDs: [String] = []
@@ -61,10 +64,11 @@ struct StreamingIndexSearchTests {
 
     @Test("Search with filter forwards")
     func searchWithFilterForwards() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 100,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 100,
+                mergeStrategy: .blocking
+            ))
 
         let vectors = (0..<50).map { makeVector(row: $0, dim: 16) }
         let ids = (0..<50).map { "v\($0)" }
@@ -89,10 +93,11 @@ struct StreamingIndexSearchTests {
 
     @Test("Range search covers all")
     func rangeSearchCoversAll() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 100,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 100,
+                mergeStrategy: .blocking
+            ))
 
         let vectors = (0..<100).map { makeVector(row: 20_000 + $0, dim: 16) }
         let ids = (0..<100).map { "v\($0)" }
@@ -105,11 +110,12 @@ struct StreamingIndexSearchTests {
 
     @Test("rangeSearch with maxDistance 0 returns exact matches")
     func rangeSearchZeroDistanceReturnsExactMatch() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 50,
-            mergeStrategy: .blocking,
-            indexConfiguration: IndexConfiguration(degree: 4, metric: .l2)
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 50,
+                mergeStrategy: .blocking,
+                indexConfiguration: IndexConfiguration(degree: 4, metric: .l2)
+            ))
 
         let dim = 8
         let vectors = (0..<10).map { makeVector(row: 30_000 + $0, dim: dim) }

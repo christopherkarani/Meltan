@@ -188,22 +188,26 @@ public enum SearchGPU {
             }
 
             let queryLength = queryHalf.count * MemoryLayout<UInt16>.stride
-            guard let buffer = context.device.makeBuffer(
-                bytes: queryHalf,
-                length: queryLength,
-                options: .storageModeShared
-            ) else {
+            guard
+                let buffer = context.device.makeBuffer(
+                    bytes: queryHalf,
+                    length: queryLength,
+                    options: .storageModeShared
+                )
+            else {
                 throw ANNSError.searchFailed("Failed to allocate Float16 query buffer")
             }
             return buffer
         }
 
         let queryLength = query.count * MemoryLayout<Float>.stride
-        guard let buffer = context.device.makeBuffer(
-            bytes: query,
-            length: queryLength,
-            options: .storageModeShared
-        ) else {
+        guard
+            let buffer = context.device.makeBuffer(
+                bytes: query,
+                length: queryLength,
+                options: .storageModeShared
+            )
+        else {
             throw ANNSError.searchFailed("Failed to allocate Float32 query buffer")
         }
         return buffer
@@ -263,9 +267,8 @@ private final class SearchGPUWorkspacePool: @unchecked Sendable {
 
         lock.lock()
         if let index = available.firstIndex(where: {
-            $0.deviceID == deviceID &&
-                $0.neighborBuffer.length >= max(neighborBytes, 1) &&
-                $0.outputBuffer.length >= max(outputBytes, 1)
+            $0.deviceID == deviceID && $0.neighborBuffer.length >= max(neighborBytes, 1)
+                && $0.outputBuffer.length >= max(outputBytes, 1)
         }) {
             let workspace = available.remove(at: index)
             lock.unlock()

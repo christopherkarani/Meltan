@@ -1,5 +1,6 @@
 import Metal
 import Testing
+
 @testable import MetalANNSCore
 
 @Suite("SearchBufferPool Tests")
@@ -65,7 +66,8 @@ struct SearchBufferPoolTests {
         #expect(pool.availableCountForTesting == 1)
 
         let large = try pool.acquire(queryDim: 256, maxK: 10)
-        let expectedRetainedBytes = large.queryBuffer.length
+        let expectedRetainedBytes =
+            large.queryBuffer.length
             + large.outputDistanceBuffer.length
             + large.outputIDBuffer.length
         pool.release(large)
@@ -90,7 +92,8 @@ struct SearchBufferPoolTests {
         #expect(pool.availableCountForTesting == 1)
 
         let second = try pool.acquire(queryDim: 200, maxK: 10)
-        let secondBytes = second.queryBuffer.length
+        let secondBytes =
+            second.queryBuffer.length
             + second.outputDistanceBuffer.length
             + second.outputIDBuffer.length
         pool.release(second)

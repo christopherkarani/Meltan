@@ -14,7 +14,8 @@ public enum FullGPUSearch {
         ef: Int,
         metric: Metric
     ) async throws -> [SearchResult] {
-        let nodeCount = graph.nodeCount > 0
+        let nodeCount =
+            graph.nodeCount > 0
             ? min(graph.nodeCount, vectors.count)
             : min(graph.capacity, vectors.count)
 

@@ -1,9 +1,9 @@
+import Darwin
 import Foundation
 import Metal
-import Darwin
 
 public enum MmapIndexLoader {
-    private static let headerMagic: [UInt8] = [0x4D, 0x41, 0x4E, 0x4E] // "MANN"
+    private static let headerMagic: [UInt8] = [0x4D, 0x41, 0x4E, 0x4E]  // "MANN"
     private static let mmapVersion: UInt32 = 3
     private static var pageSize: Int { max(1, Int(getpagesize())) }
 
@@ -89,7 +89,8 @@ public enum MmapIndexLoader {
         let alignment = pageSize
         let vectorOffset = try alignedOffset(cursor, alignment: alignment)
         let adjacencyOffset = try alignedOffset(try checkedAdd(vectorOffset, vectorByteCount), alignment: alignment)
-        let distanceOffset = try alignedOffset(try checkedAdd(adjacencyOffset, adjacencyByteCount), alignment: alignment)
+        let distanceOffset = try alignedOffset(
+            try checkedAdd(adjacencyOffset, adjacencyByteCount), alignment: alignment)
         let trailerOffset = try alignedOffset(try checkedAdd(distanceOffset, distanceByteCount), alignment: alignment)
 
         let vectorMappedLength = try alignedLength(vectorByteCount, alignment: alignment)
@@ -101,9 +102,10 @@ public enum MmapIndexLoader {
         let distanceSectionEnd = try checkedAdd(distanceOffset, distanceMappedLength)
         let trailerHeaderEnd = try checkedAdd(trailerOffset, MemoryLayout<UInt32>.size)
         guard vectorSectionEnd <= region.length,
-              adjacencySectionEnd <= region.length,
-              distanceSectionEnd <= region.length,
-              trailerHeaderEnd <= region.length else {
+            adjacencySectionEnd <= region.length,
+            distanceSectionEnd <= region.length,
+            trailerHeaderEnd <= region.length
+        else {
             throw ANNSError.corruptFile("Mmap sections are truncated")
         }
 
@@ -111,28 +113,34 @@ public enum MmapIndexLoader {
         let adjacencyPointer = region.pointer.advanced(by: adjacencyOffset)
         let distancePointer = region.pointer.advanced(by: distanceOffset)
 
-        guard let vectorBuffer = metalDevice.makeBuffer(
-            bytesNoCopy: vectorPointer,
-            length: vectorMappedLength,
-            options: .storageModeShared,
-            deallocator: nil
-        ) else {
+        guard
+            let vectorBuffer = metalDevice.makeBuffer(
+                bytesNoCopy: vectorPointer,
+                length: vectorMappedLength,
+                options: .storageModeShared,
+                deallocator: nil
+            )
+        else {
             throw ANNSError.constructionFailed("Failed to create mmap vector buffer")
         }
-        guard let adjacencyBuffer = metalDevice.makeBuffer(
-            bytesNoCopy: adjacencyPointer,
-            length: adjacencyMappedLength,
-            options: .storageModeShared,
-            deallocator: nil
-        ) else {
+        guard
+            let adjacencyBuffer = metalDevice.makeBuffer(
+                bytesNoCopy: adjacencyPointer,
+                length: adjacencyMappedLength,
+                options: .storageModeShared,
+                deallocator: nil
+            )
+        else {
             throw ANNSError.constructionFailed("Failed to create mmap adjacency buffer")
         }
-        guard let distanceBuffer = metalDevice.makeBuffer(
-            bytesNoCopy: distancePointer,
-            length: distanceMappedLength,
-            options: .storageModeShared,
-            deallocator: nil
-        ) else {
+        guard
+            let distanceBuffer = metalDevice.makeBuffer(
+                bytesNoCopy: distancePointer,
+                length: distanceMappedLength,
+                options: .storageModeShared,
+                deallocator: nil
+            )
+        else {
             throw ANNSError.constructionFailed("Failed to create mmap distance buffer")
         }
 
@@ -224,10 +232,7 @@ public enum MmapIndexLoader {
             throw ANNSError.corruptFile("Unexpected EOF")
         }
         let base = pointer.bindMemory(to: UInt8.self, capacity: length).advanced(by: cursor)
-        let value = UInt32(base[0]) |
-            (UInt32(base[1]) << 8) |
-            (UInt32(base[2]) << 16) |
-            (UInt32(base[3]) << 24)
+        let value = UInt32(base[0]) | (UInt32(base[1]) << 8) | (UInt32(base[2]) << 16) | (UInt32(base[3]) << 24)
         cursor += MemoryLayout<UInt32>.size
         return value
     }

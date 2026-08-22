@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import MetalANNS
 
 @Suite("Advanced.StreamingIndex Merge Tests")
@@ -7,10 +8,11 @@ struct StreamingIndexMergeTests {
     @Test("Merge preserves all vectors")
     func mergePreservesAllVectors() async throws {
         let deltaCapacity = 10
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: deltaCapacity,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: deltaCapacity,
+                mergeStrategy: .blocking
+            ))
 
         let vectors = (0..<(deltaCapacity + 5)).map { makeVector(row: $0, dim: 8) }
         for (i, vector) in vectors.enumerated() {
@@ -28,10 +30,11 @@ struct StreamingIndexMergeTests {
 
     @Test("Background merge triggered")
     func backgroundMergeTriggered() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 8,
-            mergeStrategy: .background
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 8,
+                mergeStrategy: .background
+            ))
 
         for i in 0..<20 {
             try await index.insert(makeVector(row: i, dim: 8), id: "v\(i)")
@@ -45,10 +48,11 @@ struct StreamingIndexMergeTests {
 
     @Test("Merge clears isMerging")
     func mergeClearsIsMerging() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 500,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 500,
+                mergeStrategy: .blocking
+            ))
 
         let vectors = (0..<300).map { makeVector(row: $0, dim: 16) }
         let ids = (0..<300).map { "v\($0)" }

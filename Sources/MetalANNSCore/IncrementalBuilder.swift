@@ -73,7 +73,9 @@ public enum IncrementalBuilder {
                 metric: metric
             )
 
-            if let replaceIndex = worstNeighborIndex(in: existingDistances), newDistance < existingDistances[replaceIndex] {
+            if let replaceIndex = worstNeighborIndex(in: existingDistances),
+                newDistance < existingDistances[replaceIndex]
+            {
                 var updatedIDs = existingIDs
                 var updatedDistances = existingDistances
                 updatedIDs[replaceIndex] = UInt32(internalID)

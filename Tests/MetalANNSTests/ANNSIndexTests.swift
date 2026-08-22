@@ -1,7 +1,8 @@
 import Foundation
-import Testing
-@testable import MetalANNS
 import MetalANNSCore
+import Testing
+
+@testable import MetalANNS
 
 @Suite("GraphIndex Public API Tests")
 struct ANNSIndexTests {
@@ -109,8 +110,9 @@ struct ANNSIndexTests {
             .appendingPathComponent("metalanns-numeric-roundtrip-\(UUID().uuidString)")
             .appendingPathExtension("mann")
         let tempMetaURL = URL(fileURLWithPath: tempURL.path + ".meta.json")
-        let tempDBURL = URL(fileURLWithPath:
-            tempURL.deletingPathExtension().appendingPathExtension("db").path)
+        let tempDBURL = URL(
+            fileURLWithPath:
+                tempURL.deletingPathExtension().appendingPathExtension("db").path)
         defer {
             try? FileManager.default.removeItem(at: tempURL)
             try? FileManager.default.removeItem(at: tempMetaURL)
@@ -160,8 +162,9 @@ struct ANNSIndexTests {
             .appendingPathComponent("metalanns-public-api-\(UUID().uuidString)")
             .appendingPathExtension("mann")
         let tempMetaURL = URL(fileURLWithPath: tempURL.path + ".meta.json")
-        let tempDBURL = URL(fileURLWithPath:
-            tempURL.deletingPathExtension().appendingPathExtension("db").path)
+        let tempDBURL = URL(
+            fileURLWithPath:
+                tempURL.deletingPathExtension().appendingPathExtension("db").path)
         defer {
             try? FileManager.default.removeItem(at: tempURL)
             try? FileManager.default.removeItem(at: tempMetaURL)

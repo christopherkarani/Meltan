@@ -1,5 +1,6 @@
 import Metal
 import Testing
+
 @testable import MetalANNSCore
 
 @Suite("Bitonic Sort Tests")

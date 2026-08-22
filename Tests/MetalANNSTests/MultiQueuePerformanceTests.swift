@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import MetalANNS
 @testable import MetalANNSCore
 
@@ -28,7 +29,8 @@ struct MultiQueuePerformanceTests {
         let sequentialSeconds = durationSeconds(sequentialStart.duration(to: .now))
 
         let speedup = sequentialSeconds / max(parallelSeconds, 1e-9)
-        print("Sharded build speedup: parallel=\(parallelSeconds)s sequential=\(sequentialSeconds)s speedup=\(speedup)x")
+        print(
+            "Sharded build speedup: parallel=\(parallelSeconds)s sequential=\(sequentialSeconds)s speedup=\(speedup)x")
         #expect(parallelSeconds > 0)
         #expect(sequentialSeconds > 0)
         #expect(speedup > 0)
@@ -37,27 +39,27 @@ struct MultiQueuePerformanceTests {
     @Test("batchSearchQPS")
     func batchSearchQPS() async throws {
         #if targetEnvironment(simulator)
-        return
-        #else
-        guard let context = makeContextOrSkip() else {
             return
-        }
+        #else
+            guard let context = makeContextOrSkip() else {
+                return
+            }
 
-        let vectors = makeVectors(count: 10_000, dim: 32, seedOffset: 0)
-        let ids = (0..<vectors.count).map { "v\($0)" }
-        let queries = Array(vectors.prefix(200))
-        let index = GraphIndex(
-            configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96),
-            context: context
-        )
-        try await index.build(vectors: vectors, ids: ids)
+            let vectors = makeVectors(count: 10_000, dim: 32, seedOffset: 0)
+            let ids = (0..<vectors.count).map { "v\($0)" }
+            let queries = Array(vectors.prefix(200))
+            let index = GraphIndex(
+                configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96),
+                context: context
+            )
+            try await index.build(vectors: vectors, ids: ids)
 
-        let start = ContinuousClock.now
-        _ = try await index.batchSearch(queries: queries, k: 10)
-        let elapsed = durationSeconds(start.duration(to: .now))
-        let qps = Double(queries.count) / max(elapsed, 1e-9)
-        print("Batch search QPS: \(qps)")
-        #expect(qps > 0)
+            let start = ContinuousClock.now
+            _ = try await index.batchSearch(queries: queries, k: 10)
+            let elapsed = durationSeconds(start.duration(to: .now))
+            let qps = Double(queries.count) / max(elapsed, 1e-9)
+            print("Batch search QPS: \(qps)")
+            #expect(qps > 0)
         #endif
     }
 

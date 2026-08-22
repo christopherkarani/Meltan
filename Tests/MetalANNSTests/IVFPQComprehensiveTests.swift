@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import MetalANNS
 @testable import MetalANNSCore
 
@@ -33,7 +34,9 @@ struct IVFPQComprehensiveTests {
         let totalReduction = Float(uncompressedVectorBytes) / Float(totalIndexBytes)
         let totalMB = Float(totalIndexBytes) / (1024 * 1024)
 
-        print("IVFPQ benchmarkMemoryUsage: totalMB=\(totalMB), vectorReduction=\(vectorReduction)x, totalReduction=\(totalReduction)x")
+        print(
+            "IVFPQ benchmarkMemoryUsage: totalMB=\(totalMB), vectorReduction=\(vectorReduction)x, totalReduction=\(totalReduction)x"
+        )
         #expect(vectorReduction > 30)
     }
 
@@ -87,7 +90,9 @@ struct IVFPQComprehensiveTests {
             nprobe: 16
         )
 
-        print("IVFPQ benchmarkRecallVsQPS: nprobe=1 \(recall1), nprobe=4 \(recall4), nprobe=8 \(recall8), nprobe=16 \(recall16)")
+        print(
+            "IVFPQ benchmarkRecallVsQPS: nprobe=1 \(recall1), nprobe=4 \(recall4), nprobe=8 \(recall8), nprobe=16 \(recall16)"
+        )
 
         #expect(recall4 >= recall1 - 0.01)
         #expect(recall8 >= recall4 - 0.01)

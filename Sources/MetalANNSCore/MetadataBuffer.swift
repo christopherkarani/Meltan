@@ -4,9 +4,9 @@ import Metal
 /// GPU-accessible metadata stored as 5 UInt32 fields in one Metal buffer.
 /// Layout: [entryPointID, nodeCount, degree, dim, iterationCount]
 // Thread-safety: All mutable operations and reads are synchronized via an internal NSLock.
-// 
-// 
-// 
+//
+//
+//
 public final class MetadataBuffer: @unchecked Sendable {
     public let buffer: MTLBuffer
     private let pointer: UnsafeMutablePointer<UInt32>

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import MetalANNSCore
 
 @Suite("Persistence Tests")
@@ -92,15 +93,15 @@ struct PersistenceTests {
             try? FileManager.default.removeItem(at: fileURL)
         }
 
-        let badPayload: [UInt8] = [0x58, 0x58, 0x58, 0x58] // "XXXX"
+        let badPayload: [UInt8] = [0x58, 0x58, 0x58, 0x58]  // "XXXX"
         FileManager.default.createFile(atPath: fileURL.path, contents: Data(badPayload))
 
         do {
             _ = try IndexSerializer.load(from: fileURL)
             #expect(Bool(false), "Expected corrupt file error")
         } catch let error as ANNSError {
-            if case .corruptFile = error { }
-            else {
+            if case .corruptFile = error {
+            } else {
                 #expect(Bool(false), "Expected ANNSError.corruptFile but got \(error)")
             }
         } catch {
@@ -134,8 +135,8 @@ struct PersistenceTests {
             _ = try IndexSerializer.load(from: fileURL)
             #expect(Bool(false), "Expected corrupt file error")
         } catch let error as ANNSError {
-            if case .corruptFile = error { }
-            else {
+            if case .corruptFile = error {
+            } else {
                 #expect(Bool(false), "Expected ANNSError.corruptFile but got \(error)")
             }
         } catch {
@@ -156,7 +157,8 @@ struct PersistenceTests {
         return buffer
     }
 
-    private func buildGraphBuffer(from graphData: [[(UInt32, Float)]], degree: Int, capacity: Int) throws -> GraphBuffer {
+    private func buildGraphBuffer(from graphData: [[(UInt32, Float)]], degree: Int, capacity: Int) throws -> GraphBuffer
+    {
         let graphBuffer = try GraphBuffer(capacity: capacity, degree: degree)
         for node in 0..<graphData.count {
             let neighbors = graphData[node]

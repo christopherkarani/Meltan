@@ -1,9 +1,9 @@
+import Darwin
 import Foundation
 import Metal
-import Darwin
 
 public enum IndexSerializer {
-    private static let headerMagic: [UInt8] = [0x4D, 0x41, 0x4E, 0x4E] // "MANN"
+    private static let headerMagic: [UInt8] = [0x4D, 0x41, 0x4E, 0x4E]  // "MANN"
     private static let version: UInt32 = 2
     private static let mmapVersion: UInt32 = 3
     private static var pageSize: Int { max(1, Int(getpagesize())) }
@@ -26,8 +26,9 @@ public enum IndexSerializer {
             throw ANNSError.constructionFailed("Vector and graph node counts do not match")
         }
         guard nodeCount <= Int(UInt32.max),
-              degree <= Int(UInt32.max),
-              vectors.dim <= Int(UInt32.max) else {
+            degree <= Int(UInt32.max),
+            vectors.dim <= Int(UInt32.max)
+        else {
             throw ANNSError.constructionFailed("Index dimensions exceed supported serialization limits")
         }
 
@@ -89,8 +90,9 @@ public enum IndexSerializer {
         }
 
         guard nodeCount <= Int(UInt32.max),
-              degree <= Int(UInt32.max),
-              vectors.dim <= Int(UInt32.max) else {
+            degree <= Int(UInt32.max),
+            vectors.dim <= Int(UInt32.max)
+        else {
             throw ANNSError.constructionFailed("Index dimensions exceed supported serialization limits")
         }
 
@@ -167,11 +169,12 @@ public enum IndexSerializer {
         let dim = Int(try readUInt32(payload, &cursor))
         let metricCode = try readUInt32(payload, &cursor)
         let metric = try metric(from: metricCode)
-        let storageType: UInt32 = if formatVersion >= 2 {
-            try readUInt32(payload, &cursor)
-        } else {
-            0
-        }
+        let storageType: UInt32 =
+            if formatVersion >= 2 {
+                try readUInt32(payload, &cursor)
+            } else {
+                0
+            }
         guard storageType == 0 || storageType == 1 || storageType == 2 else {
             throw ANNSError.corruptFile("Unsupported storage type \(storageType)")
         }
@@ -228,7 +231,8 @@ public enum IndexSerializer {
 
             cursor = try alignedOffset(distanceEnd)
         } else {
-            let expectedBodyLength = try checkedAdd(vectorByteCount, try checkedAdd(adjacencyByteCount, distanceByteCount))
+            let expectedBodyLength = try checkedAdd(
+                vectorByteCount, try checkedAdd(adjacencyByteCount, distanceByteCount))
             let bodyEnd = try checkedAdd(cursor, expectedBodyLength)
             let minimumTail = try checkedAdd(bodyEnd, MemoryLayout<UInt32>.size)
             guard payload.count >= minimumTail else {
@@ -399,10 +403,7 @@ public enum IndexSerializer {
 
         let value: UInt32 = payload.withUnsafeBytes { raw in
             let start = raw.baseAddress!.advanced(by: cursor).assumingMemoryBound(to: UInt8.self)
-            return UInt32(start[0]) |
-                (UInt32(start[1]) << 8) |
-                (UInt32(start[2]) << 16) |
-                (UInt32(start[3]) << 24)
+            return UInt32(start[0]) | (UInt32(start[1]) << 8) | (UInt32(start[2]) << 16) | (UInt32(start[3]) << 24)
         }
         cursor += MemoryLayout<UInt32>.size
         return value

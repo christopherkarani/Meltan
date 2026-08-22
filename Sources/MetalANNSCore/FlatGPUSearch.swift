@@ -88,12 +88,13 @@ public enum FlatGPUSearch {
         }
 
         let effectiveK = min(k, maxTopK, vectorCount)
-        let metricType: UInt32 = switch metric {
-        case .cosine: 0
-        case .l2: 1
-        case .innerProduct: 2
-        case .hamming: 3
-        }
+        let metricType: UInt32 =
+            switch metric {
+            case .cosine: 0
+            case .l2: 1
+            case .innerProduct: 2
+            case .hamming: 3
+            }
 
         guard let context else {
             return queries.map { hostSearch(query: $0, vectors: vectors, k: k, metric: metric) }
@@ -260,8 +261,9 @@ public enum FlatGPUSearch {
 
         // Fast path: zero-copy access to the contiguous Float32 buffer.
         if let vectorBuffer = vectors as? VectorBuffer,
-           !vectors.isFloat16,
-           let raw = vectorBuffer.floatPointer.baseAddress {
+            !vectors.isFloat16,
+            let raw = vectorBuffer.floatPointer.baseAddress
+        {
             return hostScan(
                 query: query,
                 corpus: raw,
@@ -791,10 +793,8 @@ private final class FlatWorkspacePool: @unchecked Sendable {
 
         lock.lock()
         if let index = available.firstIndex(where: {
-            $0.deviceID == deviceID &&
-                $0.queryBuffer.length >= queryBytes &&
-                $0.normBuffer.length >= normBytes &&
-                $0.distanceBuffer.length >= distanceBytes
+            $0.deviceID == deviceID && $0.queryBuffer.length >= queryBytes && $0.normBuffer.length >= normBytes
+                && $0.distanceBuffer.length >= distanceBytes
         }) {
             let workspace = available.remove(at: index)
             lock.unlock()

@@ -1,8 +1,9 @@
-import Testing
 import Foundation
 import GRDB
-@testable import MetalANNSCore
+import Testing
+
 @testable import MetalANNS
+@testable import MetalANNSCore
 
 @Suite("IndexDatabase Tests")
 struct IndexDatabaseTests {
@@ -20,13 +21,15 @@ struct IndexDatabaseTests {
         #expect(FileManager.default.fileExists(atPath: path))
 
         let tables = try db.pool.read { db in
-            try String.fetchAll(db, sql: """
-                SELECT name FROM sqlite_master
-                WHERE type='table'
-                  AND name NOT LIKE 'sqlite_%'
-                  AND name != 'grdb_migrations'
-                ORDER BY name
-                """)
+            try String.fetchAll(
+                db,
+                sql: """
+                    SELECT name FROM sqlite_master
+                    WHERE type='table'
+                      AND name NOT LIKE 'sqlite_%'
+                      AND name != 'grdb_migrations'
+                    ORDER BY name
+                    """)
         }
         #expect(tables == ["config", "idmap", "idmap_numeric", "soft_deletion"])
     }

@@ -1,6 +1,7 @@
 import Foundation
 import Metal
 import Testing
+
 @testable import MetalANNSCore
 
 @Suite("Graph Pruner Tests")
@@ -44,14 +45,18 @@ struct GraphPrunerTests {
         for node in 0..<nodeCount {
             let ids = cpuGraph[node].map(\.0)
             let dists = cpuGraph[node].map(\.1)
-            var paddedIDs = ids + Array(
-                repeating: UInt32.max,
-                count: max(0, degree - ids.count)
-            )
-            var paddedDists = dists + Array(
-                repeating: Float.greatestFiniteMagnitude,
-                count: max(0, degree - dists.count)
-            )
+            var paddedIDs =
+                ids
+                + Array(
+                    repeating: UInt32.max,
+                    count: max(0, degree - ids.count)
+                )
+            var paddedDists =
+                dists
+                + Array(
+                    repeating: Float.greatestFiniteMagnitude,
+                    count: max(0, degree - dists.count)
+                )
             paddedIDs = Array(paddedIDs.prefix(degree))
             paddedDists = Array(paddedDists.prefix(degree))
             try graphBuffer.setNeighbors(of: node, ids: paddedIDs, distances: paddedDists)

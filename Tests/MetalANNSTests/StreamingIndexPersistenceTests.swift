@@ -1,15 +1,17 @@
 import Foundation
 import Testing
+
 @testable import MetalANNS
 
 @Suite("Advanced.StreamingIndex Persistence Tests")
 struct StreamingIndexPersistenceTests {
     @Test("Save and load roundtrip count")
     func saveAndLoadEmpty() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 20,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 20,
+                mergeStrategy: .blocking
+            ))
 
         let vectors = (0..<5).map { makeVector(row: $0, dim: 16) }
         let ids = (0..<5).map { "v\($0)" }
@@ -28,10 +30,11 @@ struct StreamingIndexPersistenceTests {
 
     @Test("Search after load")
     func searchAfterLoad() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 20,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 20,
+                mergeStrategy: .blocking
+            ))
 
         let vectors = (0..<20).map { makeVector(row: 100 + $0, dim: 16) }
         let ids = (0..<20).map { "v\($0)" }
@@ -50,10 +53,11 @@ struct StreamingIndexPersistenceTests {
 
     @Test("Save auto-flushes pending delta")
     func saveRequiresFlush() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 100,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 100,
+                mergeStrategy: .blocking
+            ))
 
         let vectors = (0..<10).map { makeVector(row: 1_000 + $0, dim: 16) }
         let ids = (0..<10).map { "v\($0)" }
@@ -118,10 +122,11 @@ struct StreamingIndexPersistenceTests {
 
     @Test("mergedVectorsAreEvictedFromHistory")
     func mergedVectorsAreEvictedFromHistory() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 10,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 10,
+                mergeStrategy: .blocking
+            ))
 
         let vectors = (0..<15).map { makeVector(row: 40_000 + $0, dim: 8) }
         let ids = (0..<15).map { "m-\($0)" }
@@ -141,10 +146,11 @@ struct StreamingIndexPersistenceTests {
 
     @Test("deletedVectorsAreRemovedFromHistory")
     func deletedVectorsAreRemovedFromHistory() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 10,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 10,
+                mergeStrategy: .blocking
+            ))
 
         let vectors = (0..<5).map { makeVector(row: 50_000 + $0, dim: 8) }
         let ids = (0..<5).map { "d-\($0)" }

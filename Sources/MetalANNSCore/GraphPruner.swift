@@ -82,10 +82,11 @@ public enum GraphPruner {
 
             if prunedIDs.count < degree {
                 prunedIDs.append(contentsOf: Array(repeating: UInt32.max, count: degree - prunedIDs.count))
-                prunedDistances.append(contentsOf: Array(
-                    repeating: Float.greatestFiniteMagnitude,
-                    count: degree - prunedDistances.count
-                ))
+                prunedDistances.append(
+                    contentsOf: Array(
+                        repeating: Float.greatestFiniteMagnitude,
+                        count: degree - prunedDistances.count
+                    ))
             } else if prunedIDs.count > degree {
                 prunedIDs = Array(prunedIDs.prefix(degree))
                 prunedDistances = Array(prunedDistances.prefix(degree))
@@ -154,10 +155,11 @@ public enum GraphPruner {
 
             if prunedIDs.count < degree {
                 prunedIDs.append(contentsOf: Array(repeating: UInt32.max, count: degree - prunedIDs.count))
-                prunedDistances.append(contentsOf: Array(
-                    repeating: Float.greatestFiniteMagnitude,
-                    count: degree - prunedDistances.count
-                ))
+                prunedDistances.append(
+                    contentsOf: Array(
+                        repeating: Float.greatestFiniteMagnitude,
+                        count: degree - prunedDistances.count
+                    ))
             } else if prunedIDs.count > degree {
                 prunedIDs = Array(prunedIDs.prefix(degree))
                 prunedDistances = Array(prunedDistances.prefix(degree))

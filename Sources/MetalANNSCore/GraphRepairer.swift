@@ -44,11 +44,12 @@ public enum GraphRepairer {
         snapshot.reserveCapacity(repairNodes.count)
         for nodeID in repairNodes {
             let node = Int(nodeID)
-            snapshot.append((
-                node: node,
-                ids: graph.neighborIDs(of: node),
-                distances: graph.neighborDistances(of: node)
-            ))
+            snapshot.append(
+                (
+                    node: node,
+                    ids: graph.neighborIDs(of: node),
+                    distances: graph.neighborDistances(of: node)
+                ))
         }
 
         let updates = try localNNDescent(
@@ -224,23 +225,25 @@ public enum GraphRepairer {
                         )
 
                         if updatesPerNode[aID, default: 0] < maxUpdatesPerNode,
-                           try tryImproveEdge(
-                               node: a,
-                               candidate: b,
-                               distance: distance,
-                               graph: graph
-                           ) {
+                            try tryImproveEdge(
+                                node: a,
+                                candidate: b,
+                                distance: distance,
+                                graph: graph
+                            )
+                        {
                             updatesPerNode[aID, default: 0] += 1
                             iterationUpdates += 1
                         }
 
                         if updatesPerNode[bID, default: 0] < maxUpdatesPerNode,
-                           try tryImproveEdge(
-                               node: b,
-                               candidate: a,
-                               distance: distance,
-                               graph: graph
-                           ) {
+                            try tryImproveEdge(
+                                node: b,
+                                candidate: a,
+                                distance: distance,
+                                graph: graph
+                            )
+                        {
                             updatesPerNode[bID, default: 0] += 1
                             iterationUpdates += 1
                         }

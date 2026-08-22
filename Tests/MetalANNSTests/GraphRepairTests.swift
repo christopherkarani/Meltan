@@ -1,6 +1,7 @@
 import Foundation
-import Testing
 import MetalANNS
+import Testing
+
 @testable import MetalANNSCore
 
 @Suite("Graph Repair Tests")
@@ -338,7 +339,9 @@ private func averageRecall(
     return totalRecall / Float(queries.count)
 }
 
-private func makeGraphBuffer(_ graphData: [[(UInt32, Float)]], degree: Int, extraCapacity: Int = 8) throws -> GraphBuffer {
+private func makeGraphBuffer(_ graphData: [[(UInt32, Float)]], degree: Int, extraCapacity: Int = 8) throws
+    -> GraphBuffer
+{
     let graphBuffer = try GraphBuffer(capacity: graphData.count + extraCapacity, degree: degree)
     for node in 0..<graphData.count {
         var ids = Array(repeating: UInt32.max, count: degree)

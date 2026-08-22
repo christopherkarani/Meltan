@@ -1,6 +1,7 @@
 import Foundation
+
 #if canImport(Metal)
-import Metal
+    import Metal
 #endif
 
 public struct EnvironmentProbe: Sendable {
@@ -62,25 +63,26 @@ public struct EnvironmentProbe: Sendable {
         let metalSupportsUnifiedMemory: Bool?
         let metalRecommendedMaxWorkingSetBytes: UInt64?
         #if canImport(Metal)
-        if let device = MTLCreateSystemDefaultDevice() {
-            metalDeviceName = device.name
-            metalIsLowPower = device.isLowPower
-            metalSupportsUnifiedMemory = device.hasUnifiedMemory
-            metalRecommendedMaxWorkingSetBytes = UInt64(device.recommendedMaxWorkingSetSize)
-        } else {
+            if let device = MTLCreateSystemDefaultDevice() {
+                metalDeviceName = device.name
+                metalIsLowPower = device.isLowPower
+                metalSupportsUnifiedMemory = device.hasUnifiedMemory
+                metalRecommendedMaxWorkingSetBytes = UInt64(device.recommendedMaxWorkingSetSize)
+            } else {
+                metalDeviceName = nil
+                metalIsLowPower = nil
+                metalSupportsUnifiedMemory = nil
+                metalRecommendedMaxWorkingSetBytes = nil
+            }
+        #else
             metalDeviceName = nil
             metalIsLowPower = nil
             metalSupportsUnifiedMemory = nil
             metalRecommendedMaxWorkingSetBytes = nil
-        }
-        #else
-        metalDeviceName = nil
-        metalIsLowPower = nil
-        metalSupportsUnifiedMemory = nil
-        metalRecommendedMaxWorkingSetBytes = nil
         #endif
 
-        let arguments = CommandLine.arguments.count > 1
+        let arguments =
+            CommandLine.arguments.count > 1
             ? Array(CommandLine.arguments.dropFirst())
             : []
 
@@ -114,7 +116,7 @@ public struct EnvironmentProbe: Sendable {
             "thermalState": thermalState,
             "lowPowerModeEnabled": String(lowPowerModeEnabled),
             "buildConfiguration": buildConfiguration,
-            "processArguments": processArguments.joined(separator: " ")
+            "processArguments": processArguments.joined(separator: " "),
         ]
         if let metalDeviceName {
             metadata["metalDeviceName"] = metalDeviceName
@@ -146,59 +148,60 @@ public struct EnvironmentProbe: Sendable {
 
     private static func currentBuildConfiguration() -> String {
         #if DEBUG
-        return "debug"
+            return "debug"
         #else
-        return "release"
+            return "release"
         #endif
     }
 
     private static func readOSBuild() -> String {
         #if os(macOS)
-        return runProcess(launchPath: "/usr/bin/sw_vers", arguments: ["-buildVersion"]) ?? ""
+            return runProcess(launchPath: "/usr/bin/sw_vers", arguments: ["-buildVersion"]) ?? ""
         #else
-        return ""
+            return ""
         #endif
     }
 
     private static func readGitSHA() -> String? {
         #if os(macOS) || os(Linux)
-        if let value = runProcess(launchPath: "/usr/bin/env", arguments: ["git", "rev-parse", "--short", "HEAD"]),
-           !value.isEmpty {
-            return value
-        }
-        return nil
+            if let value = runProcess(launchPath: "/usr/bin/env", arguments: ["git", "rev-parse", "--short", "HEAD"]),
+                !value.isEmpty
+            {
+                return value
+            }
+            return nil
         #else
-        return nil
+            return nil
         #endif
     }
 
     private static func runProcess(launchPath: String, arguments: [String]) -> String? {
         #if os(macOS) || os(Linux)
-        let process = Process()
-        let pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: launchPath)
-        process.arguments = arguments
-        process.standardOutput = pipe
-        process.standardError = Pipe()
+            let process = Process()
+            let pipe = Pipe()
+            process.executableURL = URL(fileURLWithPath: launchPath)
+            process.arguments = arguments
+            process.standardOutput = pipe
+            process.standardError = Pipe()
 
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            return nil
-        }
+            do {
+                try process.run()
+                process.waitUntilExit()
+            } catch {
+                return nil
+            }
 
-        guard process.terminationStatus == 0 else {
-            return nil
-        }
+            guard process.terminationStatus == 0 else {
+                return nil
+            }
 
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let raw = String(data: data, encoding: .utf8) else {
-            return nil
-        }
-        return raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            guard let raw = String(data: data, encoding: .utf8) else {
+                return nil
+            }
+            return raw.trimmingCharacters(in: .whitespacesAndNewlines)
         #else
-        return nil
+            return nil
         #endif
     }
 }

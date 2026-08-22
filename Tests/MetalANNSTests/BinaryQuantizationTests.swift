@@ -1,7 +1,8 @@
 import Foundation
 import Testing
-@testable import MetalANNSCore
+
 @testable import MetalANNS
+@testable import MetalANNSCore
 
 @Suite("Binary Quantization Tests")
 struct BinaryQuantizationTests {
@@ -37,8 +38,8 @@ struct BinaryQuantizationTests {
             _ = try BinaryVectorBuffer(capacity: 10, dim: 7)
             #expect(Bool(false), "Expected construction failure for dim not divisible by 8")
         } catch let error as ANNSError {
-            if case .constructionFailed = error { }
-            else {
+            if case .constructionFailed = error {
+            } else {
                 #expect(Bool(false), "Expected ANNSError.constructionFailed but got \(error)")
             }
         } catch {
@@ -157,8 +158,8 @@ struct BinaryQuantizationTests {
             try await index.build(vectors: vectors, ids: ids)
             #expect(Bool(false), "Expected construction failure for dim not divisible by 8")
         } catch let error as ANNSError {
-            if case .constructionFailed = error { }
-            else {
+            if case .constructionFailed = error {
+            } else {
                 #expect(Bool(false), "Expected ANNSError.constructionFailed but got \(error)")
             }
         } catch {
@@ -185,8 +186,8 @@ struct BinaryQuantizationTests {
             try await index.build(vectors: vectors, ids: ids)
             #expect(Bool(false), "Expected construction failure when useBinary is paired with non-hamming metric")
         } catch let error as ANNSError {
-            if case .constructionFailed = error { }
-            else {
+            if case .constructionFailed = error {
+            } else {
                 #expect(Bool(false), "Expected ANNSError.constructionFailed but got \(error)")
             }
         } catch {
@@ -204,8 +205,8 @@ struct BinaryQuantizationTests {
             try await index.build(vectors: vectors, ids: ids)
             #expect(Bool(false), "Expected construction failure for hamming without useBinary")
         } catch let error as ANNSError {
-            if case .constructionFailed = error { }
-            else {
+            if case .constructionFailed = error {
+            } else {
                 #expect(Bool(false), "Expected ANNSError.constructionFailed but got \(error)")
             }
         } catch {

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import MetalANNS
 @testable import MetalANNSCore
 
@@ -91,7 +92,9 @@ struct ShardedIndexParallelBuildTests {
         let parallelSeconds = durationSeconds(parallelDuration)
         let sequentialSeconds = durationSeconds(sequentialDuration)
         let speedup = sequentialSeconds / max(parallelSeconds, 1e-9)
-        print("Sharded build timing (parallel=\(parallelSeconds)s, sequential=\(sequentialSeconds)s, speedup=\(speedup)x)")
+        print(
+            "Sharded build timing (parallel=\(parallelSeconds)s, sequential=\(sequentialSeconds)s, speedup=\(speedup)x)"
+        )
 
         #expect(parallelSeconds > 0)
         #expect(sequentialSeconds > 0)

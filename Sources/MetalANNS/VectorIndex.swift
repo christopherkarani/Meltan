@@ -184,12 +184,12 @@ public struct VectorIndex<Key: IndexKey, State>: Sendable {
     }
 }
 
-public extension VectorIndex where State == VectorIndexState.Unbuilt {
-    init(configuration: IndexConfiguration = .default) {
+extension VectorIndex where State == VectorIndexState.Unbuilt {
+    public init(configuration: IndexConfiguration = .default) {
         self.init(rawIndex: GraphIndex(configuration: configuration))
     }
 
-    consuming func build(records: [VectorRecord<Key>]) async throws -> VectorIndex<Key, VectorIndexState.Ready> {
+    public consuming func build(records: [VectorRecord<Key>]) async throws -> VectorIndex<Key, VectorIndexState.Ready> {
         guard !records.isEmpty else {
             throw ANNSError.constructionFailed("Cannot build index with empty records")
         }
@@ -199,16 +199,17 @@ public extension VectorIndex where State == VectorIndexState.Unbuilt {
         return VectorIndex<Key, VectorIndexState.Ready>(rawIndex: rawIndex)
     }
 
-    consuming func build(vectors: [[Float]], ids: [Key]) async throws -> VectorIndex<Key, VectorIndexState.Ready> {
+    public consuming func build(vectors: [[Float]], ids: [Key]) async throws -> VectorIndex<Key, VectorIndexState.Ready>
+    {
         try await build(records: zip(ids, vectors).map { VectorRecord(id: $0.0, vector: $0.1) })
     }
 
-    static func load(from url: URL) async throws -> VectorIndex<Key, VectorIndexState.Ready> {
+    public static func load(from url: URL) async throws -> VectorIndex<Key, VectorIndexState.Ready> {
         let loaded = try await GraphIndex.load(from: url)
         return VectorIndex<Key, VectorIndexState.Ready>(rawIndex: loaded)
     }
 
-    static func loadReadOnly(
+    public static func loadReadOnly(
         from url: URL,
         mode: ReadOnlyLoadMode = .mmap
     ) async throws -> VectorIndex<Key, VectorIndexState.ReadOnly> {
@@ -223,52 +224,52 @@ public extension VectorIndex where State == VectorIndexState.Unbuilt {
     }
 }
 
-public extension VectorIndex where State == VectorIndexState.Ready {
-    var count: Int {
+extension VectorIndex where State == VectorIndexState.Ready {
+    public var count: Int {
         get async {
             await rawIndex.count
         }
     }
 
-    func insert(_ record: VectorRecord<Key>) async throws {
+    public func insert(_ record: VectorRecord<Key>) async throws {
         try await rawIndex.insert(record.vector, id: String(record.id))
     }
 
-    func batchInsert(_ records: [VectorRecord<Key>]) async throws {
+    public func batchInsert(_ records: [VectorRecord<Key>]) async throws {
         let vectors = records.map(\.vector)
         let ids = records.map { String($0.id) }
         try await rawIndex.batchInsert(vectors, ids: ids)
     }
 
-    func delete(id: Key) async throws {
+    public func delete(id: Key) async throws {
         try await rawIndex.delete(id: String(id))
     }
 
-    func compact() async throws {
+    public func compact() async throws {
         try await rawIndex.compact()
     }
 
-    func save(to url: URL) async throws {
+    public func save(to url: URL) async throws {
         try await rawIndex.save(to: url)
     }
 
-    func saveMmapCompatible(to url: URL) async throws {
+    public func saveMmapCompatible(to url: URL) async throws {
         try await rawIndex.saveMmapCompatible(to: url)
     }
 
-    func setMetadata(_ field: Field<String>, value: String, for id: Key) async throws {
+    public func setMetadata(_ field: Field<String>, value: String, for id: Key) async throws {
         try await rawIndex.setMetadata(field.name, value: value, for: String(id))
     }
 
-    func setMetadata(_ field: Field<Float>, value: Float, for id: Key) async throws {
+    public func setMetadata(_ field: Field<Float>, value: Float, for id: Key) async throws {
         try await rawIndex.setMetadata(field.name, value: value, for: String(id))
     }
 
-    func setMetadata(_ field: Field<Int64>, value: Int64, for id: Key) async throws {
+    public func setMetadata(_ field: Field<Int64>, value: Int64, for id: Key) async throws {
         try await rawIndex.setMetadata(field.name, value: value, for: String(id))
     }
 
-    func search(
+    public func search(
         query: [Float],
         topK: Int,
         metric: Metric? = nil,
@@ -283,7 +284,7 @@ public extension VectorIndex where State == VectorIndexState.Ready {
         return Self.mapNeighbors(results)
     }
 
-    func batchSearch(
+    public func batchSearch(
         queries: [[Float]],
         topK: Int,
         metric: Metric? = nil,
@@ -298,7 +299,7 @@ public extension VectorIndex where State == VectorIndexState.Ready {
         return results.map(Self.mapNeighbors)
     }
 
-    func rangeSearch(
+    public func rangeSearch(
         query: [Float],
         maxDistance: Float,
         limit: Int = 1000,
@@ -316,18 +317,18 @@ public extension VectorIndex where State == VectorIndexState.Ready {
     }
 }
 
-public extension VectorIndex where State == VectorIndexState.ReadOnly {
-    var count: Int {
+extension VectorIndex where State == VectorIndexState.ReadOnly {
+    public var count: Int {
         get async {
             await rawIndex.count
         }
     }
 
-    func save(to url: URL) async throws {
+    public func save(to url: URL) async throws {
         try await rawIndex.save(to: url)
     }
 
-    func search(
+    public func search(
         query: [Float],
         topK: Int,
         metric: Metric? = nil,
@@ -342,7 +343,7 @@ public extension VectorIndex where State == VectorIndexState.ReadOnly {
         return Self.mapNeighbors(results)
     }
 
-    func batchSearch(
+    public func batchSearch(
         queries: [[Float]],
         topK: Int,
         metric: Metric? = nil,
@@ -357,7 +358,7 @@ public extension VectorIndex where State == VectorIndexState.ReadOnly {
         return results.map(Self.mapNeighbors)
     }
 
-    func rangeSearch(
+    public func rangeSearch(
         query: [Float],
         maxDistance: Float,
         limit: Int = 1000,

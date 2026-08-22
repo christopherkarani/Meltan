@@ -41,9 +41,12 @@ public struct StreamingConfiguration: Sendable, Codable, Equatable {
             && lhs.indexConfiguration.hnswConfiguration.enabled == rhs.indexConfiguration.hnswConfiguration.enabled
             && lhs.indexConfiguration.hnswConfiguration.M == rhs.indexConfiguration.hnswConfiguration.M
             && lhs.indexConfiguration.hnswConfiguration.maxLayers == rhs.indexConfiguration.hnswConfiguration.maxLayers
-            && lhs.indexConfiguration.repairConfiguration.repairInterval == rhs.indexConfiguration.repairConfiguration.repairInterval
-            && lhs.indexConfiguration.repairConfiguration.repairDepth == rhs.indexConfiguration.repairConfiguration.repairDepth
-            && lhs.indexConfiguration.repairConfiguration.repairIterations == rhs.indexConfiguration.repairConfiguration.repairIterations
+            && lhs.indexConfiguration.repairConfiguration.repairInterval
+                == rhs.indexConfiguration.repairConfiguration.repairInterval
+            && lhs.indexConfiguration.repairConfiguration.repairDepth
+                == rhs.indexConfiguration.repairConfiguration.repairDepth
+            && lhs.indexConfiguration.repairConfiguration.repairIterations
+                == rhs.indexConfiguration.repairConfiguration.repairIterations
             && lhs.indexConfiguration.repairConfiguration.enabled == rhs.indexConfiguration.repairConfiguration.enabled
     }
 

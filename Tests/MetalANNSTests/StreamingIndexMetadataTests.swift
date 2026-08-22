@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import MetalANNS
 @testable import MetalANNSCore
 
@@ -7,10 +8,11 @@ import Testing
 struct StreamingIndexMetadataTests {
     @Test("Set and get string metadata")
     func setAndGetStringMetadata() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 100,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 100,
+                mergeStrategy: .blocking
+            ))
         let vector = makeVector(row: 0, dim: 16)
 
         try await index.insert(vector, id: "v0")
@@ -28,10 +30,11 @@ struct StreamingIndexMetadataTests {
 
     @Test("Metadata preserved after merge")
     func metadataPreservedAfterMerge() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 10,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 10,
+                mergeStrategy: .blocking
+            ))
 
         let vectors = (0..<20).map { makeVector(row: $0, dim: 16) }
         let ids = (0..<20).map { "v\($0)" }
@@ -51,10 +54,11 @@ struct StreamingIndexMetadataTests {
 
     @Test("Delete removes from results")
     func deleteRemovesFromResults() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 20,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 20,
+                mergeStrategy: .blocking
+            ))
 
         let vectors = (0..<10).map { makeVector(row: 100 + $0, dim: 16) }
         let ids = (0..<10).map { "v\($0)" }

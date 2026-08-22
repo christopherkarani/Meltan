@@ -95,7 +95,8 @@ public struct BenchmarkReport: Sendable {
         var lines: [String] = []
         let showConcurrency = rows.contains { $0.concurrency != 1 }
 
-        var header = padRight("label", to: 16)
+        var header =
+            padRight("label", to: 16)
             + " "
             + padLeft("recall@10", to: 10)
             + " "
@@ -119,7 +120,8 @@ public struct BenchmarkReport: Sendable {
         lines.append(String(repeating: "-", count: showConcurrency ? 97 : 91))
 
         for row in rows {
-            var line = padRight(row.label, to: 16)
+            var line =
+                padRight(row.label, to: 16)
                 + " "
                 + padLeft(String(format: "%.3f", row.recallAt10), to: 10)
                 + " "
@@ -146,7 +148,9 @@ public struct BenchmarkReport: Sendable {
     }
 
     public func renderCSV() -> String {
-        var lines = ["label,recall@10,qps,buildTimeMs,p50ms,p90ms,p95ms,p99ms,p999ms,minMs,stdDevMs,avgQueryMs,maxQueryMs,recall@1,recall@100,queryCount,indexResidentMB,peakResidentMB,concurrency"]
+        var lines = [
+            "label,recall@10,qps,buildTimeMs,p50ms,p90ms,p95ms,p99ms,p999ms,minMs,stdDevMs,avgQueryMs,maxQueryMs,recall@1,recall@100,queryCount,indexResidentMB,peakResidentMB,concurrency"
+        ]
         for row in rows {
             lines.append(
                 [
@@ -168,7 +172,7 @@ public struct BenchmarkReport: Sendable {
                     String(row.queryCount),
                     String(format: "%.6f", row.indexResidentMB),
                     String(format: "%.6f", row.peakResidentMB),
-                    String(row.concurrency)
+                    String(row.concurrency),
                 ]
                 .joined(separator: ",")
             )
@@ -204,9 +208,9 @@ public struct BenchmarkReport: Sendable {
                     "concurrency": row.concurrency,
                     "firstQueryMs": row.firstQueryMs,
                     "warmSteadyMeanMs": row.warmSteadyMeanMs,
-                    "backendLabel": row.backendLabel
+                    "backendLabel": row.backendLabel,
                 ]
-            }
+            },
         ]
 
         let jsonData = try? JSONSerialization.data(
@@ -247,7 +251,8 @@ public struct BenchmarkReport: Sendable {
             let xFraction = recall
             let yFraction = (logQps[idx] - minLogQps) / usableLogRange
             let xPos = Swift.min(plotWidth - 1, Swift.max(0, Int(xFraction * Double(plotWidth - 1))))
-            let yPosFromTop = Swift.min(plotHeight - 1, Swift.max(0, plotHeight - 1 - Int(yFraction * Double(plotHeight - 1))))
+            let yPosFromTop = Swift.min(
+                plotHeight - 1, Swift.max(0, plotHeight - 1 - Int(yFraction * Double(plotHeight - 1))))
             let isFrontier = frontierLabels.contains(row.label)
             let marker: Character = isFrontier ? "*" : "."
             let existing = grid[yPosFromTop][xPos]
@@ -268,7 +273,8 @@ public struct BenchmarkReport: Sendable {
         let leftPadWidth = max(3, 9)
         let midPadWidth = max(3, plotWidth / 2 - 2)
         let rightPadWidth = max(3, plotWidth / 2 + 1)
-        let xAxisLabels = padLeft("0.0", to: leftPadWidth)
+        let xAxisLabels =
+            padLeft("0.0", to: leftPadWidth)
             + padLeft("0.5", to: midPadWidth)
             + padLeft("1.0", to: rightPadWidth)
         lines.append(xAxisLabels)
@@ -300,7 +306,8 @@ public struct BenchmarkReport: Sendable {
                 guard other.label != candidate.label else {
                     return false
                 }
-                let dominates = other.recallAt10 >= candidate.recallAt10
+                let dominates =
+                    other.recallAt10 >= candidate.recallAt10
                     && other.qps >= candidate.qps
                     && (other.recallAt10 > candidate.recallAt10 || other.qps > candidate.qps)
                 return dominates

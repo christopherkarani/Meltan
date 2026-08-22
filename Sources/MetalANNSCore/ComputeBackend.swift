@@ -13,12 +13,12 @@ public protocol ComputeBackend: Sendable {
 public enum BackendFactory {
     public static func makeBackend() throws -> any ComputeBackend {
         #if targetEnvironment(simulator)
-        return AccelerateBackend()
+            return AccelerateBackend()
         #else
-        if let metalBackend = try? MetalBackend() {
-            return metalBackend
-        }
-        return AccelerateBackend()
+            if let metalBackend = try? MetalBackend() {
+                return metalBackend
+            }
+            return AccelerateBackend()
         #endif
     }
 }

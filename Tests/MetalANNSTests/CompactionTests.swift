@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import MetalANNS
 @testable import MetalANNSCore
 
@@ -31,8 +32,8 @@ struct CompactionTests {
             try await index.delete(id: "vec_0")
             #expect(Bool(false), "Expected idNotFound after compaction")
         } catch let error as ANNSError {
-            if case .idNotFound = error { }
-            else {
+            if case .idNotFound = error {
+            } else {
                 #expect(Bool(false), "Expected ANNSError.idNotFound but got \(error)")
             }
         } catch {

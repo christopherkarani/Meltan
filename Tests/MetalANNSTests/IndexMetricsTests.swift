@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import MetalANNS
 @testable import MetalANNSCore
 
@@ -14,11 +15,13 @@ struct IndexMetricsTests {
         try await index.insert(makeVector(row: 10_000, dim: 8), id: "extra")
         _ = try await index.rangeSearch(query: vectors[1], maxDistance: 10_000, limit: 5)
 
-        let streaming = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 5,
-            mergeStrategy: .blocking,
-            indexConfiguration: IndexConfiguration(degree: 8, metric: .cosine, hnswConfiguration: .init(enabled: false))
-        ))
+        let streaming = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 5,
+                mergeStrategy: .blocking,
+                indexConfiguration: IndexConfiguration(
+                    degree: 8, metric: .cosine, hnswConfiguration: .init(enabled: false))
+            ))
         #expect(await streaming.metrics == nil)
 
         try await streaming.batchInsert(vectors, ids: ids)
@@ -140,11 +143,13 @@ struct IndexMetricsTests {
 
     @Test("Streaming merge recorded")
     func streamingMergeRecorded() async throws {
-        let streaming = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 5,
-            mergeStrategy: .blocking,
-            indexConfiguration: IndexConfiguration(degree: 8, metric: .cosine, hnswConfiguration: .init(enabled: false))
-        ))
+        let streaming = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 5,
+                mergeStrategy: .blocking,
+                indexConfiguration: IndexConfiguration(
+                    degree: 8, metric: .cosine, hnswConfiguration: .init(enabled: false))
+            ))
         let metrics = IndexMetrics()
         await streaming.setMetrics(metrics)
 
@@ -159,11 +164,13 @@ struct IndexMetricsTests {
 
     @Test("Streaming single-record merge path not recorded")
     func streamingSingleRecordMergeNotRecorded() async throws {
-        let streaming = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 5,
-            mergeStrategy: .blocking,
-            indexConfiguration: IndexConfiguration(degree: 8, metric: .cosine, hnswConfiguration: .init(enabled: false))
-        ))
+        let streaming = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 5,
+                mergeStrategy: .blocking,
+                indexConfiguration: IndexConfiguration(
+                    degree: 8, metric: .cosine, hnswConfiguration: .init(enabled: false))
+            ))
         let metrics = IndexMetrics()
         await streaming.setMetrics(metrics)
 
@@ -181,11 +188,13 @@ struct IndexMetricsTests {
         let (index, vectors, _) = try await makeIndexFixture()
         await index.setMetrics(shared)
 
-        let streaming = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 10,
-            mergeStrategy: .blocking,
-            indexConfiguration: IndexConfiguration(degree: 8, metric: .cosine, hnswConfiguration: .init(enabled: false))
-        ))
+        let streaming = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 10,
+                mergeStrategy: .blocking,
+                indexConfiguration: IndexConfiguration(
+                    degree: 8, metric: .cosine, hnswConfiguration: .init(enabled: false))
+            ))
         await streaming.setMetrics(shared)
 
         let streamVectors = makeVectors(count: 12, dim: 16, seedOffset: 70_000)
@@ -228,11 +237,13 @@ struct IndexMetricsTests {
 
     @Test("Streaming metrics not persisted")
     func streamingMetricsNotPersistedAfterLoad() async throws {
-        let streaming = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 6,
-            mergeStrategy: .blocking,
-            indexConfiguration: IndexConfiguration(degree: 8, metric: .cosine, hnswConfiguration: .init(enabled: false))
-        ))
+        let streaming = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 6,
+                mergeStrategy: .blocking,
+                indexConfiguration: IndexConfiguration(
+                    degree: 8, metric: .cosine, hnswConfiguration: .init(enabled: false))
+            ))
         let metrics = IndexMetrics()
         await streaming.setMetrics(metrics)
 
@@ -258,11 +269,12 @@ struct IndexMetricsTests {
     ) async throws -> (index: GraphIndex, vectors: [[Float]], ids: [String]) {
         let vectors = makeVectors(count: count, dim: dim, seedOffset: seedOffset)
         let ids = (0..<count).map { "v\($0)" }
-        let index = GraphIndex(configuration: IndexConfiguration(
-            degree: 8,
-            metric: .cosine,
-            hnswConfiguration: .init(enabled: false)
-        ))
+        let index = GraphIndex(
+            configuration: IndexConfiguration(
+                degree: 8,
+                metric: .cosine,
+                hnswConfiguration: .init(enabled: false)
+            ))
         try await index.build(vectors: vectors, ids: ids)
         return (index, vectors, ids)
     }

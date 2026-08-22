@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import MetalANNSCore
+import Testing
 
 @Suite("SIMD Distance Tests")
 struct SIMDDistanceTests {

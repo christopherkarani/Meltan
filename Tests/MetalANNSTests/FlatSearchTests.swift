@@ -1,5 +1,6 @@
 import Metal
 import Testing
+
 @testable import MetalANNSCore
 
 @Suite("Flat Exact GPU Search Tests")
@@ -14,7 +15,7 @@ struct FlatSearchTests {
     func seededVectors(count: Int, dim: Int, seed: UInt64 = 7) -> [[Float]] {
         var state = seed
         func next() -> Float {
-            state = state &* 6364136223846793005 &+ 1442695040888963407
+            state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
             return Float((state >> 33) & 0xFFFFFF) / Float(0xFFFFFF) * 2.0 - 1.0
         }
         return (0..<count).map { _ in (0..<dim).map { _ in next() } }
@@ -29,7 +30,8 @@ struct FlatSearchTests {
         let scored = vectors.enumerated().map { index, vector -> (UInt32, Float) in
             (UInt32(index), distance(query: query, vector: vector, metric: metric))
         }
-        return scored
+        return
+            scored
             .sorted { lhs, rhs in
                 lhs.1 == rhs.1 ? lhs.0 < rhs.0 : lhs.1 < rhs.1
             }
@@ -90,19 +92,23 @@ struct FlatSearchTests {
                 )
                 let expected = bruteForceTopK(query: query, vectors: vectors, k: 100, metric: metric)
 
-                #expect(results.count == min(100, vectorCount), "result count mismatch n=\(vectorCount) metric=\(metric)")
+                #expect(
+                    results.count == min(100, vectorCount), "result count mismatch n=\(vectorCount) metric=\(metric)")
                 let gotIDs = Set(results.map(\.internalID))
                 let wantIDs = Set(expected.map(\.id))
                 #expect(gotIDs == wantIDs, "top-k mismatch n=\(vectorCount) metric=\(metric)")
 
                 // Scores must be ascending and match the expected distances.
                 for (index, result) in results.enumerated() where index > 0 {
-                    #expect(result.score >= results[index - 1].score - 1e-6,
-                            "scores not ascending n=\(vectorCount) metric=\(metric)")
+                    #expect(
+                        result.score >= results[index - 1].score - 1e-6,
+                        "scores not ascending n=\(vectorCount) metric=\(metric)")
                 }
                 if let first = results.first, let bestExpected = expected.first {
-                    #expect(abs(first.score - bestExpected.distance) < 1e-3,
-                            "best score mismatch n=\(vectorCount) metric=\(metric): \(first.score) vs \(bestExpected.distance)")
+                    #expect(
+                        abs(first.score - bestExpected.distance) < 1e-3,
+                        "best score mismatch n=\(vectorCount) metric=\(metric): \(first.score) vs \(bestExpected.distance)"
+                    )
                 }
             }
         }
@@ -135,8 +141,9 @@ struct FlatSearchTests {
                 k: 50,
                 metric: .cosine
             )
-            #expect(Set(batch.map(\.internalID)) == Set(expected.map(\.id)),
-                    "batch top-k mismatch for query \(queryIndex)")
+            #expect(
+                Set(batch.map(\.internalID)) == Set(expected.map(\.id)),
+                "batch top-k mismatch for query \(queryIndex)")
         }
     }
 
@@ -190,8 +197,9 @@ struct FlatSearchTests {
                 context: context, query: query, vectors: buffer, k: 25, metric: metric
             )
             let expected = bruteForceTopK(query: query, vectors: mutated, k: 25, metric: metric)
-            #expect(Set(results.map(\.internalID)) == Set(expected.map(\.id)),
-                    "stale norm cache after mutation for metric \(metric)")
+            #expect(
+                Set(results.map(\.internalID)) == Set(expected.map(\.id)),
+                "stale norm cache after mutation for metric \(metric)")
         }
 
         FlatGPUSearch.invalidateHostNormCache()

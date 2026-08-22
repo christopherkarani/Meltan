@@ -3,9 +3,9 @@ import Foundation
 import Metal
 
 // Thread-safety: All mutable operations and reads are synchronized via an internal NSLock.
-// 
-// 
-// 
+//
+//
+//
 public final class DiskBackedVectorBuffer: @unchecked Sendable {
     public let buffer: MTLBuffer
     public let dim: Int
@@ -40,17 +40,20 @@ public final class DiskBackedVectorBuffer: @unchecked Sendable {
         self.count = count
         self.isFloat16 = isFloat16
         self.isBinary = isBinary
-        self.bytesPerVector = if isBinary {
-            dim / 8
-        } else {
-            dim * (isFloat16 ? MemoryLayout<UInt16>.stride : MemoryLayout<Float>.stride)
-        }
+        self.bytesPerVector =
+            if isBinary {
+                dim / 8
+            } else {
+                dim * (isFloat16 ? MemoryLayout<UInt16>.stride : MemoryLayout<Float>.stride)
+            }
         self.cacheCapacity = max(1, cacheCapacity)
 
-        guard let stagingBuffer = device.makeBuffer(
-            length: max(4, bytesPerVector),
-            options: .storageModeShared
-        ) else {
+        guard
+            let stagingBuffer = device.makeBuffer(
+                length: max(4, bytesPerVector),
+                options: .storageModeShared
+            )
+        else {
             throw ANNSError.constructionFailed("Failed to allocate disk-backed staging buffer")
         }
         self.buffer = stagingBuffer
@@ -132,7 +135,7 @@ extension DiskBackedVectorBuffer: VectorStorage {
 }
 
 public enum DiskBackedIndexLoader {
-    private static let headerMagic: [UInt8] = [0x4D, 0x41, 0x4E, 0x4E] // "MANN"
+    private static let headerMagic: [UInt8] = [0x4D, 0x41, 0x4E, 0x4E]  // "MANN"
     private static let mmapVersion: UInt32 = 3
     private static var pageSize: Int { max(1, Int(getpagesize())) }
 
@@ -192,17 +195,19 @@ public enum DiskBackedIndexLoader {
             throw ANNSError.corruptFile("Unsupported file version \(formatVersion)")
         }
 
-        let nodeCount = Int(try readUInt32(from: UnsafeRawPointer(region.pointer), length: region.length, cursor: &cursor))
+        let nodeCount = Int(
+            try readUInt32(from: UnsafeRawPointer(region.pointer), length: region.length, cursor: &cursor))
         let degree = Int(try readUInt32(from: UnsafeRawPointer(region.pointer), length: region.length, cursor: &cursor))
         let dim = Int(try readUInt32(from: UnsafeRawPointer(region.pointer), length: region.length, cursor: &cursor))
         let metricCode = try readUInt32(from: UnsafeRawPointer(region.pointer), length: region.length, cursor: &cursor)
         let metric = try metric(from: metricCode)
 
-        let storageType: UInt32 = if formatVersion >= 2 {
-            try readUInt32(from: UnsafeRawPointer(region.pointer), length: region.length, cursor: &cursor)
-        } else {
-            0
-        }
+        let storageType: UInt32 =
+            if formatVersion >= 2 {
+                try readUInt32(from: UnsafeRawPointer(region.pointer), length: region.length, cursor: &cursor)
+            } else {
+                0
+            }
 
         guard nodeCount > 0 else {
             throw ANNSError.corruptFile("Node count must be greater than zero")
@@ -255,9 +260,10 @@ public enum DiskBackedIndexLoader {
         let distanceEnd = try checkedAdd(distanceOffset, distanceByteCount)
 
         guard vectorEnd <= region.length,
-              adjacencyEnd <= region.length,
-              distanceEnd <= region.length,
-              trailerOffset + MemoryLayout<UInt32>.size <= region.length else {
+            adjacencyEnd <= region.length,
+            distanceEnd <= region.length,
+            trailerOffset + MemoryLayout<UInt32>.size <= region.length
+        else {
             throw ANNSError.corruptFile("Index payload is truncated")
         }
 
@@ -387,10 +393,7 @@ public enum DiskBackedIndexLoader {
         }
 
         let base = pointer.bindMemory(to: UInt8.self, capacity: length).advanced(by: cursor)
-        let value = UInt32(base[0]) |
-            (UInt32(base[1]) << 8) |
-            (UInt32(base[2]) << 16) |
-            (UInt32(base[3]) << 24)
+        let value = UInt32(base[0]) | (UInt32(base[1]) << 8) | (UInt32(base[2]) << 16) | (UInt32(base[3]) << 24)
         cursor += MemoryLayout<UInt32>.size
         return value
     }

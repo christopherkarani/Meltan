@@ -32,7 +32,8 @@ public final class GraphBuffer: @unchecked Sendable {
         let distanceBytes = slotCount * MemoryLayout<Float>.stride
 
         guard let adjacencyBuffer = metalDevice.makeBuffer(length: max(adjacencyBytes, 4), options: .storageModeShared),
-              let distanceBuffer = metalDevice.makeBuffer(length: max(distanceBytes, 4), options: .storageModeShared) else {
+            let distanceBuffer = metalDevice.makeBuffer(length: max(distanceBytes, 4), options: .storageModeShared)
+        else {
             throw ANNSError.constructionFailed("Failed to allocate GraphBuffer")
         }
 
@@ -70,7 +71,8 @@ public final class GraphBuffer: @unchecked Sendable {
         let distanceBytes = slotCount * MemoryLayout<Float>.stride
 
         guard adjacencyBuffer.length >= max(adjacencyBytes, 4),
-              distanceBuffer.length >= max(distanceBytes, 4) else {
+            distanceBuffer.length >= max(distanceBytes, 4)
+        else {
             throw ANNSError.constructionFailed("Provided buffers are too small for GraphBuffer layout")
         }
 

@@ -74,7 +74,8 @@ public final class MetalContext: @unchecked Sendable {
             throw ANNSError.constructionFailed("No bundled Metal shader sources were found")
         }
 
-        let source = try shaderURLs
+        let source =
+            try shaderURLs
             .map { try String(contentsOf: $0, encoding: .utf8) }
             .joined(separator: "\n\n")
         return try device.makeLibrary(source: source, options: nil)

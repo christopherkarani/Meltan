@@ -22,7 +22,8 @@ extension GraphIndex {
         if searchMetric == .hamming, !configuration.useBinary {
             throw ANNSError.searchFailed("metric .hamming requires a binary index")
         }
-        let normalizedQuery = (searchMetric == .hamming && configuration.useBinary)
+        let normalizedQuery =
+            (searchMetric == .hamming && configuration.useBinary)
             ? Self.quantizeForHamming(query)
             : query
         let metricsRecorder = metrics
@@ -39,13 +40,14 @@ extension GraphIndex {
 
         var pendingFlatResults: [SearchResult]? = nil
         if filter == nil,
-           deletedCount == 0,
-           MetalANNSCore.FlatGPUSearch.isEligible(
-               vectors: vectors,
-               metric: searchMetric,
-               k: effectiveK,
-               maxVectorCount: configuration.exactSearchMaxVectorCount
-           ) {
+            deletedCount == 0,
+            MetalANNSCore.FlatGPUSearch.isEligible(
+                vectors: vectors,
+                metric: searchMetric,
+                k: effectiveK,
+                maxVectorCount: configuration.exactSearchMaxVectorCount
+            )
+        {
             do {
                 pendingFlatResults = try await MetalANNSCore.FlatGPUSearch.search(
                     context: context,
@@ -66,12 +68,13 @@ extension GraphIndex {
         if let flatResults = pendingFlatResults {
             rawResults = flatResults
         } else if let context,
-                  shouldUseHybridGPUSearch(
-                      for: vectors,
-                      metric: searchMetric,
-                      k: effectiveK,
-                      ef: effectiveEf
-                  ) {
+            shouldUseHybridGPUSearch(
+                for: vectors,
+                metric: searchMetric,
+                k: effectiveK,
+                ef: effectiveEf
+            )
+        {
             do {
                 rawResults = try await SearchGPU.search(
                     context: context,
@@ -194,7 +197,8 @@ extension GraphIndex {
         if searchMetric == .hamming, !configuration.useBinary {
             throw ANNSError.searchFailed("metric .hamming requires a binary index")
         }
-        let normalizedQuery = (searchMetric == .hamming && configuration.useBinary)
+        let normalizedQuery =
+            (searchMetric == .hamming && configuration.useBinary)
             ? Self.quantizeForHamming(query)
             : query
         let metricsRecorder = metrics
@@ -328,13 +332,14 @@ extension GraphIndex {
         }
 
         if let vectors, filter == nil,
-           softDeletion.deletedCount == 0,
-           MetalANNSCore.FlatGPUSearch.isEligible(
-               vectors: vectors,
-               metric: metric ?? configuration.metric,
-               k: k,
-               maxVectorCount: configuration.exactSearchMaxVectorCount
-           ) {
+            softDeletion.deletedCount == 0,
+            MetalANNSCore.FlatGPUSearch.isEligible(
+                vectors: vectors,
+                metric: metric ?? configuration.metric,
+                k: k,
+                maxVectorCount: configuration.exactSearchMaxVectorCount
+            )
+        {
             do {
                 let flatResults = try await MetalANNSCore.FlatGPUSearch.batchSearch(
                     context: context,
@@ -369,7 +374,7 @@ extension GraphIndex {
         let maxConcurrency = await batchSearchMaxConcurrency()
 
         return try await withThrowingTaskGroup(of: (Int, [SearchResult]).self) { group in
-            var orderedResults = Array<[SearchResult]?>(repeating: nil, count: queries.count)
+            var orderedResults = [[SearchResult]?](repeating: nil, count: queries.count)
             var nextIndex = 0
 
             for _ in 0..<min(maxConcurrency, queries.count) {

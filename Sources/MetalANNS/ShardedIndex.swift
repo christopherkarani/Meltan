@@ -203,7 +203,7 @@ public actor _ShardedIndex {
 
         let maxConcurrency = max(1, ProcessInfo.processInfo.activeProcessorCount)
         return try await withThrowingTaskGroup(of: (Int, [SearchResult]).self) { group in
-            var orderedResults = Array<[SearchResult]?>(repeating: nil, count: queries.count)
+            var orderedResults = [[SearchResult]?](repeating: nil, count: queries.count)
             var nextIndex = 0
 
             for _ in 0..<min(maxConcurrency, queries.count) {

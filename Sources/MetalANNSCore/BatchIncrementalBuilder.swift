@@ -28,7 +28,8 @@ public enum BatchIncrementalBuilder {
             throw ANNSError.constructionFailed("Degree must be greater than 0")
         }
         guard startSlot + newVectors.count <= graph.capacity,
-              startSlot + newVectors.count <= vectorStorage.capacity else {
+            startSlot + newVectors.count <= vectorStorage.capacity
+        else {
             throw ANNSError.constructionFailed("Batch insert exceeds capacity")
         }
 
@@ -60,6 +61,5 @@ public enum BatchIncrementalBuilder {
             graph.setCount(startSlot + newVectors.count)
         }
     }
-
 
 }

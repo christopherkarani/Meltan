@@ -228,7 +228,7 @@ public actor _StreamingIndex {
                 }
             }
 
-            var ordered = Array<[SearchResult]?>(repeating: nil, count: queries.count)
+            var ordered = [[SearchResult]?](repeating: nil, count: queries.count)
             for try await (index, results) in group {
                 ordered[index] = results
             }
@@ -661,7 +661,7 @@ public actor _StreamingIndex {
                 pendingIDs.removeAll(keepingCapacity: true)
             } catch let error as ANNSError {
                 guard case .constructionFailed(let message) = error,
-                      message.contains("Index capacity exceeded")
+                    message.contains("Index capacity exceeded")
                 else {
                     throw error
                 }
@@ -948,37 +948,37 @@ public actor _StreamingIndex {
 
     private func evaluate(filter: _LegacySearchFilter, row: [String: MetadataValue]) -> Bool {
         switch filter {
-        case .equals(column: let column, value: let value):
+        case .equals(let column, let value):
             if case .string(let current)? = row[column] {
                 return current == value
             }
             return false
 
-        case .greaterThan(column: let column, value: let value):
+        case .greaterThan(let column, let value):
             guard let current = numericValue(from: row[column]) else {
                 return false
             }
             return current > value
 
-        case .lessThan(column: let column, value: let value):
+        case .lessThan(let column, let value):
             guard let current = numericValue(from: row[column]) else {
                 return false
             }
             return current < value
 
-        case .greaterThanInt(column: let column, value: let value):
+        case .greaterThanInt(let column, let value):
             guard let current = integerValue(from: row[column]) else {
                 return false
             }
             return current > value
 
-        case .lessThanInt(column: let column, value: let value):
+        case .lessThanInt(let column, let value):
             guard let current = integerValue(from: row[column]) else {
                 return false
             }
             return current < value
 
-        case .in(column: let column, values: let values):
+        case .in(let column, let values):
             if case .string(let current)? = row[column] {
                 return values.contains(current)
             }
@@ -1137,14 +1137,16 @@ public actor _StreamingIndex {
         try fileManager.createDirectory(at: parentURL, withIntermediateDirectories: true)
 
         if fileManager.fileExists(atPath: destinationURL.path) {
-            let backupURL = parentURL.appendingPathComponent(".\(destinationURL.lastPathComponent).backup-\(UUID().uuidString)")
+            let backupURL = parentURL.appendingPathComponent(
+                ".\(destinationURL.lastPathComponent).backup-\(UUID().uuidString)")
             do {
                 try fileManager.moveItem(at: destinationURL, to: backupURL)
                 try fileManager.moveItem(at: sourceURL, to: destinationURL)
                 try? fileManager.removeItem(at: backupURL)
             } catch {
                 if !fileManager.fileExists(atPath: destinationURL.path),
-                   fileManager.fileExists(atPath: backupURL.path) {
+                    fileManager.fileExists(atPath: backupURL.path)
+                {
                     try? fileManager.moveItem(at: backupURL, to: destinationURL)
                 }
                 throw error

@@ -259,7 +259,9 @@ extension GraphIndex {
     /// Do not call this directly — use `resolvePersistedState(for:)`.
     internal nonisolated static func loadPersistedMetadataIfPresent(from fileURL: URL) throws -> _PersistedMetadata? {
         do {
-            if let sqliteMeta = try SQLiteStructuredStore.load(_PersistedMetadata.self, from: metadataDBURL(for: fileURL)) {
+            if let sqliteMeta = try SQLiteStructuredStore.load(
+                _PersistedMetadata.self, from: metadataDBURL(for: fileURL))
+            {
                 return sqliteMeta
             }
         } catch {

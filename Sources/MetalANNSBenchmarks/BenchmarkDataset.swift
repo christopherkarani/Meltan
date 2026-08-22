@@ -84,7 +84,7 @@ public struct BenchmarkDataset: Sendable {
         try validate()
 
         var data = Data()
-        data.append(contentsOf: [0x41, 0x4E, 0x4E, 0x42]) // "ANNB"
+        data.append(contentsOf: [0x41, 0x4E, 0x4E, 0x42])  // "ANNB"
         Self.appendUInt32(1, to: &data)
         Self.appendUInt32(UInt32(trainVectors.count), to: &data)
         Self.appendUInt32(UInt32(testVectors.count), to: &data)

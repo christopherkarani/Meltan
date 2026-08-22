@@ -5,6 +5,7 @@ public struct HNSWConfiguration: Sendable, Codable {
     public var enabled: Bool
 
     /// Connection limit per skip layer.
+    // swift-format-ignore: AlwaysUseLowerCamelCase
     public var M: Int
 
     /// Maximum skip layer count.

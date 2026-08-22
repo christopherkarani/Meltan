@@ -207,7 +207,8 @@ extension GraphIndex {
 
         let startSlot = Int(idMap.nextInternalID)
         guard startSlot + vectors.count <= vectorStorage.capacity,
-              startSlot + vectors.count <= graph.capacity else {
+            startSlot + vectors.count <= graph.capacity
+        else {
             throw ANNSError.constructionFailed("Index capacity exceeded; rebuild with larger capacity")
         }
 

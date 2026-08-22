@@ -1,6 +1,7 @@
 import Testing
-@testable import MetalANNSCore
+
 @testable import MetalANNS
+@testable import MetalANNSCore
 
 @Suite("ComputeBackend Protocol Tests")
 struct BackendProtocolTests {

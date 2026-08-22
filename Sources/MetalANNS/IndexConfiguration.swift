@@ -92,17 +92,20 @@ public struct IndexConfiguration: Sendable, Codable {
         useFloat16 = try container.decode(Bool.self, forKey: .useFloat16)
         useBinary = try container.decodeIfPresent(Bool.self, forKey: .useBinary) ?? false
         convergenceThreshold = try container.decode(Float.self, forKey: .convergenceThreshold)
-        hnswConfiguration = try container.decodeIfPresent(
-            HNSWConfiguration.self,
-            forKey: .hnswConfiguration
-        ) ?? .default
-        repairConfiguration = try container.decodeIfPresent(
-            RepairConfiguration.self,
-            forKey: .repairConfiguration
-        ) ?? .default
-        exactSearchMaxVectorCount = try container.decodeIfPresent(
-            Int.self,
-            forKey: .exactSearchMaxVectorCount
-        ) ?? IndexConfiguration.defaultExactSearchMaxVectorCount
+        hnswConfiguration =
+            try container.decodeIfPresent(
+                HNSWConfiguration.self,
+                forKey: .hnswConfiguration
+            ) ?? .default
+        repairConfiguration =
+            try container.decodeIfPresent(
+                RepairConfiguration.self,
+                forKey: .repairConfiguration
+            ) ?? .default
+        exactSearchMaxVectorCount =
+            try container.decodeIfPresent(
+                Int.self,
+                forKey: .exactSearchMaxVectorCount
+            ) ?? IndexConfiguration.defaultExactSearchMaxVectorCount
     }
 }

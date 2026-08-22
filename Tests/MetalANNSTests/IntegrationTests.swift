@@ -1,6 +1,7 @@
 import Foundation
 import Metal
 import Testing
+
 @testable import MetalANNS
 
 @Suite("Phase 6 Integration Tests")

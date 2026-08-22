@@ -1,15 +1,17 @@
 import Foundation
 import Testing
+
 @testable import MetalANNS
 
 @Suite("Advanced.StreamingIndex Insert Tests")
 struct StreamingIndexInsertTests {
     @Test("Insert single vector")
     func insertSingleVector() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 10,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 10,
+                mergeStrategy: .blocking
+            ))
 
         try await index.insert(makeVector(row: 0, dim: 4), id: "v0")
 
@@ -18,10 +20,11 @@ struct StreamingIndexInsertTests {
 
     @Test("Insert beyond single capacity")
     func insertBeyondSingleCapacity() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 10,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 10,
+                mergeStrategy: .blocking
+            ))
 
         for i in 0..<25 {
             try await index.insert(makeVector(row: i, dim: 4), id: "v\(i)")
@@ -32,10 +35,11 @@ struct StreamingIndexInsertTests {
 
     @Test("Batch insert")
     func batchInsert() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 20,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 20,
+                mergeStrategy: .blocking
+            ))
 
         let vectors = (0..<50).map { makeVector(row: $0, dim: 4) }
         let ids = (0..<50).map { "v\($0)" }
@@ -46,10 +50,11 @@ struct StreamingIndexInsertTests {
 
     @Test("Duplicate ID throws")
     func duplicateIDThrows() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 10,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 10,
+                mergeStrategy: .blocking
+            ))
         let vector = makeVector(row: 0, dim: 4)
 
         try await index.insert(vector, id: "a")

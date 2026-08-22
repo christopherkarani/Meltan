@@ -1,5 +1,6 @@
 import Metal
 import Testing
+
 @testable import MetalANNSCore
 
 @Suite("GPU NN-Descent Tests")
@@ -95,10 +96,12 @@ struct NNDescentGPUTests {
         reverseCountBuffer: MTLBuffer
     ) async throws -> UInt32 {
         let localJoinPipeline = try await context.pipelineCache.pipeline(for: kernelName)
-        guard let updateCountBuffer = context.device.makeBuffer(
-            length: MemoryLayout<UInt32>.stride,
-            options: .storageModeShared
-        ) else {
+        guard
+            let updateCountBuffer = context.device.makeBuffer(
+                length: MemoryLayout<UInt32>.stride,
+                options: .storageModeShared
+            )
+        else {
             throw ANNSError.constructionFailed("Failed to allocate local_join update counter")
         }
         let updateCounter = updateCountBuffer.contents().bindMemory(to: UInt32.self, capacity: 1)
@@ -108,7 +111,7 @@ struct NNDescentGPUTests {
         var degree = UInt32(localJoinDegree)
         var maxReverse = UInt32(localJoinMaxReverse)
         var dim = UInt32(localJoinDim)
-        var metricType: UInt32 = 1 // L2
+        var metricType: UInt32 = 1  // L2
 
         try await context.execute { commandBuffer in
             guard let encoder = commandBuffer.makeComputeCommandEncoder() else {
@@ -273,7 +276,7 @@ struct NNDescentGPUTests {
             vectors: [
                 [0.0, 0.0],
                 [10.0, 0.0],
-                [10.2, 0.0]
+                [10.2, 0.0],
             ],
             startingAt: 0
         )
@@ -311,7 +314,7 @@ struct NNDescentGPUTests {
             vectors: [
                 [0.0, 0.0],
                 [10.0, 0.0],
-                [10.2, 0.0]
+                [10.2, 0.0],
             ],
             startingAt: 0
         )

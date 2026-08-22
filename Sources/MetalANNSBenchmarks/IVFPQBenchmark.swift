@@ -146,12 +146,14 @@ public struct IVFPQBenchmark: Sendable {
         let totalQueryCount = queries.count * repeats
         let ivfpqDistribution = LatencyDistribution.compute(fromLatenciesMs: allLatencies)
         let ivfpqMemoryAfterQueries = MemorySnapshot.capture()
-        let ivfpqResidentDelta = ivfpqMemoryAfterBuild.residentBytes
+        let ivfpqResidentDelta =
+            ivfpqMemoryAfterBuild.residentBytes
             &- min(ivfpqMemoryAfterBuild.residentBytes, ivfpqMemoryBeforeBuild.residentBytes)
         let ivfpqRow = BenchmarkReport.Row(
             label: "_IVFPQIndex",
             recallAt10: totalQueryCount > 0 ? recallAt10Total / Double(totalQueryCount) : 0,
-            qps: totalQueryCount > 0 && totalSearchTimeSeconds > 0 ? Double(totalQueryCount) / totalSearchTimeSeconds : 0,
+            qps: totalQueryCount > 0 && totalSearchTimeSeconds > 0
+                ? Double(totalQueryCount) / totalSearchTimeSeconds : 0,
             buildTimeMs: buildTimeMs,
             p50Ms: ivfpqDistribution.p50Ms,
             p95Ms: ivfpqDistribution.p95Ms,

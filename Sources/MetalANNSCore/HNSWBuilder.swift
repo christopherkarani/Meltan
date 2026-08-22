@@ -82,6 +82,7 @@ public enum HNSWBuilder {
         return min(max(0, raw), maxLayers)
     }
 
+    // swift-format-ignore: AlwaysUseLowerCamelCase
     private static func buildSkipLayer(
         at layer: Int,
         nodeLevels: [Int],
@@ -116,9 +117,10 @@ public enum HNSWBuilder {
         let layerNodeSet = Set(nodesAtLayer)
         let targetCandidatePool = max(M * 8, M)
         let cachedVectors = nodesAtLayer.map { vectors.vector(at: Int($0)) }
-        let layerIndexByNode = Dictionary(uniqueKeysWithValues: nodesAtLayer.enumerated().map { (offset, nodeID) in
-            (nodeID, offset)
-        })
+        let layerIndexByNode = Dictionary(
+            uniqueKeysWithValues: nodesAtLayer.enumerated().map { (offset, nodeID) in
+                (nodeID, offset)
+            })
 
         for (layerIndex, nodeID) in nodesAtLayer.enumerated() {
             let sourceVector = cachedVectors[layerIndex]

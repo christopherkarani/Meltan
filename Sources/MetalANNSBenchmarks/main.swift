@@ -55,7 +55,7 @@ func benchmarkMetadata(
         "warmupRuns": String(warmupRuns),
         "generatedAt": ISO8601DateFormatter().string(from: Date()),
         "csvOut": csvOut ?? "",
-        "seed": seed != nil ? String(seed!) : ""
+        "seed": seed != nil ? String(seed!) : "",
     ]
 
     // Merge in environment probe metadata. On key collisions, the env probe wins
@@ -157,7 +157,9 @@ func printRunBanner(_ environment: EnvironmentProbe) {
     print("Device: \(deviceLine)  Cores: \(environment.activeCoreCount)  Mem: \(String(format: "%.1f", memoryGiB)) GiB")
     let buildSuffix = environment.osBuild.isEmpty ? "" : " (\(environment.osBuild))"
     print("OS:     \(environment.osVersion)\(buildSuffix)")
-    print("Mode:   \(environment.buildConfiguration)  Thermal: \(environment.thermalState)  LowPower: \(environment.lowPowerModeEnabled)")
+    print(
+        "Mode:   \(environment.buildConfiguration)  Thermal: \(environment.thermalState)  LowPower: \(environment.lowPowerModeEnabled)"
+    )
 }
 
 func makeConfigsForSweep(
@@ -212,14 +214,23 @@ func makeCrossProductConfigs(
 
 func printUsage() {
     print("USAGE:")
-    print("  MetalANNSBenchmarks [--dataset <path.annbin>]                                  # synthetic or loaded single run (default)")
+    print(
+        "  MetalANNSBenchmarks [--dataset <path.annbin>]                                  # synthetic or loaded single run (default)"
+    )
     print("  MetalANNSBenchmarks --sweep [--dataset <path.annbin>]                          # sweep efSearch")
     print("  MetalANNSBenchmarks --dataset <path.annbin> --sweep [--sweep-efsearch <list>]  # dataset-aware sweep")
     print("  MetalANNSBenchmarks --dataset <path.annbin> --csv-out <path.csv>                # save CSV")
-    print("  MetalANNSBenchmarks --ivfpq                                                    # ANS vs IVFPQ (synthetic if no dataset)")
-    print("  MetalANNSBenchmarks --concurrency 8                                            # single run with N in-flight queries")
-    print("  MetalANNSBenchmarks --concurrency-sweep 1,2,4,8,16                              # sweep concurrency levels")
-    print("  MetalANNSBenchmarks --compare cpu,gpu,gpu-adc                                   # multi-backend compare (see note)")
+    print(
+        "  MetalANNSBenchmarks --ivfpq                                                    # ANS vs IVFPQ (synthetic if no dataset)"
+    )
+    print(
+        "  MetalANNSBenchmarks --concurrency 8                                            # single run with N in-flight queries"
+    )
+    print(
+        "  MetalANNSBenchmarks --concurrency-sweep 1,2,4,8,16                              # sweep concurrency levels")
+    print(
+        "  MetalANNSBenchmarks --compare cpu,gpu,gpu-adc                                   # multi-backend compare (see note)"
+    )
     print("\nOPTIONS:")
     print("  --query-count <n>        override number of query vectors")
     print("  --seed <n>               deterministic seed for synthetic dataset")
@@ -237,8 +248,12 @@ func printUsage() {
     print("  --efsearch <n>")
     print("  --k <n>")
     print("  --concurrency <n>           single concurrency level for normal runs (default 1)")
-    print("  --concurrency-sweep <list>  comma-separated concurrency levels (e.g. 1,2,4,8,16); switches mode to concurrency sweep")
-    print("  --compare <list>            comma-separated backend labels; emits one row per label (NOTE: GraphIndex has no public backend selector — see warning at startup)")
+    print(
+        "  --concurrency-sweep <list>  comma-separated concurrency levels (e.g. 1,2,4,8,16); switches mode to concurrency sweep"
+    )
+    print(
+        "  --compare <list>            comma-separated backend labels; emits one row per label (NOTE: GraphIndex has no public backend selector — see warning at startup)"
+    )
     print("  --ivfpq-subspaces <n>")
     print("  --ivfpq-centroids <n>")
     print("  --ivfpq-coarse-centroids <n>")
@@ -413,7 +428,8 @@ func parseOptions(from args: [String]) throws -> ParsedBenchmarkOptions {
 
         case "--compare":
             let value = try nextValue(for: arg, args: args, index: &index)
-            let labels = value
+            let labels =
+                value
                 .split(separator: ",")
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
@@ -456,7 +472,8 @@ func parsePositiveInt(_ flag: String, _ value: String) throws -> Int {
 }
 
 func parseIntList(_ value: String, flag: String = "--sweep-efsearch") throws -> [Int] {
-    let values = value
+    let values =
+        value
         .split(separator: ",")
         .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         .compactMap { Int($0) }
@@ -749,9 +766,9 @@ do {
         // requested label so users can still measure variance, but they should
         // interpret the rows accordingly.
         fputs(
-            "warning: --compare requested but GraphIndex has no public backend selector. " +
-            "All rows below run the same auto-selected backend; per-label values reflect " +
-            "run-to-run variance, not differences between distinct backends.\n",
+            "warning: --compare requested but GraphIndex has no public backend selector. "
+                + "All rows below run the same auto-selected backend; per-label values reflect "
+                + "run-to-run variance, not differences between distinct backends.\n",
             stderr
         )
 

@@ -285,12 +285,10 @@ private final class ADCWorkspacePool: @unchecked Sendable {
 
         lock.lock()
         if let index = available.firstIndex(where: { workspace in
-            workspace.deviceID == deviceID &&
-                workspace.queryBuffer.length >= queryBytes &&
-                workspace.codebookBuffer.length >= codebookBytes &&
-                workspace.distanceTableBuffer.length >= tableBytes &&
-                workspace.codesBuffer.length >= codesBytes &&
-                workspace.distancesBuffer.length >= distancesBytes
+            workspace.deviceID == deviceID && workspace.queryBuffer.length >= queryBytes
+                && workspace.codebookBuffer.length >= codebookBytes
+                && workspace.distanceTableBuffer.length >= tableBytes && workspace.codesBuffer.length >= codesBytes
+                && workspace.distancesBuffer.length >= distancesBytes
         }) {
             let workspace = available.remove(at: index)
             lock.unlock()

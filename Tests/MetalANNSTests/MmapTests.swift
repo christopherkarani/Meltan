@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import MetalANNS
 @testable import MetalANNSCore
 
@@ -82,8 +83,8 @@ struct MmapTests {
             try await loaded.insert(vectors[0], id: "should_fail")
             #expect(Bool(false), "Expected read-only insert failure for mmap-loaded index")
         } catch let error as ANNSError {
-            if case .constructionFailed = error { }
-            else {
+            if case .constructionFailed = error {
+            } else {
                 #expect(Bool(false), "Expected ANNSError.constructionFailed but got \(error)")
             }
         } catch {

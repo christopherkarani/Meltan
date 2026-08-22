@@ -1,25 +1,26 @@
 import Foundation
 import Metal
 import Testing
+
 @testable import MetalANNSCore
 
 @Suite("GPU-CPU Search Parity")
 struct GPUCPUParityTests {
     private func makeGPUContextOrSkip() -> MetalContext? {
         #if targetEnvironment(simulator)
-        print("Skipping GPUCPUParityTests on simulator")
-        return nil
+            print("Skipping GPUCPUParityTests on simulator")
+            return nil
         #else
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            print("Skipping GPUCPUParityTests: no Metal device available")
-            return nil
-        }
-        do {
-            return try MetalContext()
-        } catch {
-            print("Skipping GPUCPUParityTests: MetalContext unavailable (\(error))")
-            return nil
-        }
+            guard MTLCreateSystemDefaultDevice() != nil else {
+                print("Skipping GPUCPUParityTests: no Metal device available")
+                return nil
+            }
+            do {
+                return try MetalContext()
+            } catch {
+                print("Skipping GPUCPUParityTests: MetalContext unavailable (\(error))")
+                return nil
+            }
         #endif
     }
 
@@ -28,7 +29,9 @@ struct GPUCPUParityTests {
         degree: Int,
         maxIterations: Int,
         context: MetalContext
-    ) async throws -> (vectorBuffer: VectorBuffer, graphBuffer: GraphBuffer, cpuGraph: [[(UInt32, Float)]], entryPoint: Int) {
+    ) async throws -> (
+        vectorBuffer: VectorBuffer, graphBuffer: GraphBuffer, cpuGraph: [[(UInt32, Float)]], entryPoint: Int
+    ) {
         let nodeCount = vectors.count
         let dim = vectors[0].count
         let device = context.device
@@ -48,7 +51,9 @@ struct GPUCPUParityTests {
         for node in 0..<nodeCount {
             let neighbors = cpuGraph[node]
             let ids = neighbors.map(\.0) + Array(repeating: UInt32.max, count: max(0, degree - neighbors.count))
-            let dists = neighbors.map(\.1) + Array(repeating: Float.greatestFiniteMagnitude, count: max(0, degree - neighbors.count))
+            let dists =
+                neighbors.map(\.1)
+                + Array(repeating: Float.greatestFiniteMagnitude, count: max(0, degree - neighbors.count))
             try graphBuffer.setNeighbors(
                 of: node,
                 ids: Array(ids.prefix(degree)),
@@ -64,7 +69,7 @@ struct GPUCPUParityTests {
         (nodeCount: 100, dim: 32, degree: 8, k: 5, ef: 32, maxIter: 10),
         (nodeCount: 500, dim: 64, degree: 16, k: 10, ef: 64, maxIter: 10),
         (nodeCount: 2000, dim: 128, degree: 32, k: 20, ef: 128, maxIter: 5),
-        (nodeCount: 8000, dim: 384, degree: 32, k: 10, ef: 64, maxIter: 3)
+        (nodeCount: 8000, dim: 384, degree: 32, k: 10, ef: 64, maxIter: 3),
     ])
     func gpuAndCPUSearchAgreeOnSameGraph(
         nodeCount: Int,

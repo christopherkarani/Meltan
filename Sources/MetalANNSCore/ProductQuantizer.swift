@@ -149,7 +149,9 @@ public struct ProductQuantizer: Sendable, Codable {
                             var sum: Float = 0
                             let codebookBase = codebookBuffer.baseAddress!
                             for dimensionIndex in 0..<subspaceDimension {
-                                let delta = queryBase[dimensionIndex] - subtractBase[dimensionIndex] - codebookBase[dimensionIndex]
+                                let delta =
+                                    queryBase[dimensionIndex] - subtractBase[dimensionIndex]
+                                    - codebookBase[dimensionIndex]
                                 sum += delta * delta
                             }
                             return sum

@@ -206,13 +206,14 @@ struct BenchmarkRunner {
 
         return BenchmarkReport(
             rows: rows,
-            datasetLabel: "train=\(dataset.trainVectors.count),test=\(dataset.testVectors.count),dim=\(dataset.dimension),metric=\(dataset.metric.rawValue)",
+            datasetLabel:
+                "train=\(dataset.trainVectors.count),test=\(dataset.testVectors.count),dim=\(dataset.dimension),metric=\(dataset.metric.rawValue)",
             metadata: [
                 "queryCount": "\(config.queryCount)",
                 "trainCount": "\(dataset.trainVectors.count)",
                 "dimension": "\(dataset.dimension)",
                 "metric": dataset.metric.rawValue,
-                "concurrencySweep": concurrencyLevels.map(String.init).joined(separator: ",")
+                "concurrencySweep": concurrencyLevels.map(String.init).joined(separator: ","),
             ]
         )
     }
@@ -278,14 +279,15 @@ struct BenchmarkRunner {
 
         return BenchmarkReport(
             rows: rows,
-            datasetLabel: "train=\(dataset.trainVectors.count),test=\(dataset.testVectors.count),dim=\(dataset.dimension),metric=\(dataset.metric.rawValue)",
+            datasetLabel:
+                "train=\(dataset.trainVectors.count),test=\(dataset.testVectors.count),dim=\(dataset.dimension),metric=\(dataset.metric.rawValue)",
             metadata: [
                 "queryCount": "\(config.queryCount)",
                 "trainCount": "\(dataset.trainVectors.count)",
                 "dimension": "\(dataset.dimension)",
                 "metric": dataset.metric.rawValue,
                 "compare": backendLabels.joined(separator: ","),
-                "compareNote": "no public backend selector; rows reflect auto-selected backend variance"
+                "compareNote": "no public backend selector; rows reflect auto-selected backend variance",
             ]
         )
     }
@@ -332,13 +334,14 @@ struct BenchmarkRunner {
 
         return BenchmarkReport(
             rows: rows,
-            datasetLabel: "train=\(dataset.trainVectors.count),test=\(dataset.testVectors.count),dim=\(dataset.dimension),metric=\(dataset.metric.rawValue)",
+            datasetLabel:
+                "train=\(dataset.trainVectors.count),test=\(dataset.testVectors.count),dim=\(dataset.dimension),metric=\(dataset.metric.rawValue)",
             metadata: [
                 "queryCount": "\(configs.first?.config.queryCount ?? 0)",
                 "trainCount": "\(dataset.trainVectors.count)",
                 "dimension": "\(dataset.dimension)",
                 "metric": dataset.metric.rawValue,
-                "sweep": "\(configs.count)"
+                "sweep": "\(configs.count)",
             ]
         )
     }
@@ -682,7 +685,8 @@ struct BenchmarkRunner {
         let approx = try await index.search(query: query, k: queryK)
         let searchEnd = DispatchTime.now().uptimeNanoseconds
 
-        let latencyMs = measureLatency
+        let latencyMs =
+            measureLatency
             ? Double(searchEnd - searchStart) / 1_000_000.0
             : 0
 
@@ -737,7 +741,8 @@ struct BenchmarkRunner {
         metric: Metric
     ) -> [UInt32] {
         let topCount = max(1, min(k, vectors.count))
-        return vectors
+        return
+            vectors
             .enumerated()
             .map { idx, vector -> (id: UInt32, distance: Float) in
                 (UInt32(idx), distance(query: query, vector: vector, metric: metric))
@@ -807,8 +812,8 @@ extension BenchmarkRunner.Results {
     }
 }
 
-private extension Array where Element == [UInt32] {
-    func maxNeighborCount() -> Int {
+extension Array where Element == [UInt32] {
+    fileprivate func maxNeighborCount() -> Int {
         reduce(into: 0) { count, row in
             count = Swift.max(count, row.count)
         }

@@ -38,7 +38,7 @@ public enum NNDescentCPU {
             var state: UInt64
 
             mutating func next(upperBound: Int) -> Int {
-                state = state &* 6364136223846793005 &+ 1
+                state = state &* 6_364_136_223_846_793_005 &+ 1
                 return Int(state % UInt64(upperBound))
             }
         }
@@ -49,7 +49,7 @@ public enum NNDescentCPU {
         var candidateScratch: [Int] = []
 
         for node in 0..<nodeCount {
-            var generator = LCG(state: UInt64(node + 1) &* 0x9E3779B97F4A7C15)
+            var generator = LCG(state: UInt64(node + 1) &* 0x9E37_79B9_7F4A_7C15)
             var neighbors = Set<Int>()
             while neighbors.count < degree {
                 let candidate = generator.next(upperBound: nodeCount)

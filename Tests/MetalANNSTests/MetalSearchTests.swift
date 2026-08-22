@@ -1,7 +1,8 @@
 import Metal
 import Testing
-@testable import MetalANNSCore
+
 @testable import MetalANNS
+@testable import MetalANNSCore
 
 @Suite("Metal Search Tests")
 struct MetalSearchTests {

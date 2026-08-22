@@ -55,8 +55,8 @@ public final class IndexDatabase: @unchecked Sendable {
 
 // MARK: - IDMap persistence
 
-public extension IndexDatabase {
-    func saveIDMap(_ idMap: IDMap) throws {
+extension IndexDatabase {
+    public func saveIDMap(_ idMap: IDMap) throws {
         let stringRows = (0..<idMap.nextInternalID).compactMap { index -> (String, UInt32)? in
             let internalID = UInt32(index)
             guard let externalID = idMap.externalID(for: internalID) else {
@@ -94,7 +94,7 @@ public extension IndexDatabase {
         }
     }
 
-    func loadIDMap() throws -> IDMap {
+    public func loadIDMap() throws -> IDMap {
         try pool.read { db in
             let stringRows = try Row.fetchAll(db, sql: "SELECT externalID, internalID FROM idmap ORDER BY internalID")
             var stringEntries: [(String, UInt32)] = []
@@ -148,8 +148,8 @@ public extension IndexDatabase {
 
 // MARK: - Configuration persistence
 
-public extension IndexDatabase {
-    func saveConfiguration(_ configuration: IndexConfiguration) throws {
+extension IndexDatabase {
+    public func saveConfiguration(_ configuration: IndexConfiguration) throws {
         let data = try JSONEncoder().encode(configuration)
         guard let encoded = String(data: data, encoding: .utf8) else {
             throw ANNSError.constructionFailed("Failed to encode configuration")
@@ -163,13 +163,15 @@ public extension IndexDatabase {
         }
     }
 
-    func loadConfiguration() throws -> IndexConfiguration? {
+    public func loadConfiguration() throws -> IndexConfiguration? {
         try pool.read { db in
-            guard let payload = try String.fetchOne(
-                db,
-                sql: "SELECT value FROM config WHERE key = ?",
-                arguments: ["index.configuration"]
-            ), let data = payload.data(using: .utf8) else {
+            guard
+                let payload = try String.fetchOne(
+                    db,
+                    sql: "SELECT value FROM config WHERE key = ?",
+                    arguments: ["index.configuration"]
+                ), let data = payload.data(using: .utf8)
+            else {
                 return nil
             }
             return try JSONDecoder().decode(IndexConfiguration.self, from: data)
@@ -179,8 +181,8 @@ public extension IndexDatabase {
 
 // MARK: - Soft-deletion persistence
 
-public extension IndexDatabase {
-    func saveSoftDeletion(_ softDeletion: SoftDeletion) throws {
+extension IndexDatabase {
+    public func saveSoftDeletion(_ softDeletion: SoftDeletion) throws {
         try pool.write { db in
             try db.execute(sql: "DELETE FROM soft_deletion")
 
@@ -193,7 +195,7 @@ public extension IndexDatabase {
         }
     }
 
-    func loadSoftDeletion() throws -> SoftDeletion {
+    public func loadSoftDeletion() throws -> SoftDeletion {
         try pool.read { db in
             let values = try Int64.fetchAll(db, sql: "SELECT internalID FROM soft_deletion")
             var softDeletion = SoftDeletion()
@@ -210,8 +212,8 @@ public extension IndexDatabase {
 
 // MARK: - Metadata persistence
 
-public extension IndexDatabase {
-    func saveMetadataStore(_ metadataStore: MetadataStore) throws {
+extension IndexDatabase {
+    public func saveMetadataStore(_ metadataStore: MetadataStore) throws {
         let data = try JSONEncoder().encode(metadataStore)
         guard let encoded = String(data: data, encoding: .utf8) else {
             throw ANNSError.constructionFailed("Failed to encode metadataStore")
@@ -225,13 +227,15 @@ public extension IndexDatabase {
         }
     }
 
-    func loadMetadataStore() throws -> MetadataStore {
+    public func loadMetadataStore() throws -> MetadataStore {
         try pool.read { db in
-            guard let payload = try String.fetchOne(
-                db,
-                sql: "SELECT value FROM config WHERE key = ?",
-                arguments: ["index.metadataStore"]
-            ), let data = payload.data(using: .utf8) else {
+            guard
+                let payload = try String.fetchOne(
+                    db,
+                    sql: "SELECT value FROM config WHERE key = ?",
+                    arguments: ["index.metadataStore"]
+                ), let data = payload.data(using: .utf8)
+            else {
                 return MetadataStore()
             }
             return try JSONDecoder().decode(MetadataStore.self, from: data)

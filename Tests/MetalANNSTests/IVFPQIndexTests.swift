@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import MetalANNS
 @testable import MetalANNSCore
 
@@ -159,7 +160,8 @@ private func exactTopK(query: [Float], vectors: [[Float]], ids: [String], k: Int
     let scored = zip(ids, vectors).map { id, vector in
         (id, SIMDDistance.distance(query, vector, metric: .l2))
     }
-    return scored
+    return
+        scored
         .sorted { $0.1 < $1.1 }
         .prefix(k)
         .map(\.0)

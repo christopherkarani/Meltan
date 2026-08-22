@@ -16,7 +16,7 @@ public actor IndexMetrics {
         100_000_000,
         200_000_000,
         500_000_000,
-        1_000_000_000
+        1_000_000_000,
     ]
 
     public private(set) var searchLatencyHistogram: [Int] = Array(repeating: 0, count: 10)

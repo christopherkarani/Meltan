@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import MetalANNS
 @testable import MetalANNSCore
 
@@ -80,7 +81,7 @@ struct FilteredSearchTests {
 
         let andFilter: Advanced.LegacyFilter = .and([
             .equals(column: "category", value: "A"),
-            .greaterThan(column: "score", value: 3.0)
+            .greaterThan(column: "score", value: 3.0),
         ])
         let andResults = try await index.search(query: vectors[30], k: 20, filter: andFilter)
         #expect(!andResults.isEmpty)
@@ -91,7 +92,7 @@ struct FilteredSearchTests {
 
         let orFilter: Advanced.LegacyFilter = .or([
             .equals(column: "category", value: "A"),
-            .greaterThan(column: "score", value: 3.0)
+            .greaterThan(column: "score", value: 3.0),
         ])
         let orResults = try await index.search(query: vectors[80], k: 30, filter: orFilter)
         #expect(!orResults.isEmpty)

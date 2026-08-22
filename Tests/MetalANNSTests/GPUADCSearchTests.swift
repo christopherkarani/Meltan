@@ -1,6 +1,7 @@
 import Foundation
 import Metal
 import Testing
+
 @testable import MetalANNS
 @testable import MetalANNSCore
 
@@ -267,7 +268,7 @@ struct GPUADCSearchTests {
             subspaceDimension: 2,
             codebooks: [
                 [[0, 0], [1, 1], [2, 2], [3, 3]],
-                [[0, 0], [1, 1], [2, 2], [3, 3]]
+                [[0, 0], [1, 1], [2, 2], [3, 3]],
             ]
         )
 
@@ -324,7 +325,7 @@ struct GPUADCSearchTests {
             )
             #expect(Bool(false), "Expected oversized threadgroup-table rejection")
         } catch let error as ANNSError {
-            guard case let .searchFailed(message) = error else {
+            guard case .searchFailed(let message) = error else {
                 #expect(Bool(false), "Expected searchFailed for oversized threadgroup table, got \(error)")
                 return
             }
@@ -337,23 +338,24 @@ struct GPUADCSearchTests {
 
     private func makeGPUContextOrSkip() -> MetalContext? {
         #if targetEnvironment(simulator)
-        print("Skipping GPU ADC tests on simulator")
-        return nil
+            print("Skipping GPU ADC tests on simulator")
+            return nil
         #else
-        guard MTLCreateSystemDefaultDevice() != nil else {
-            print("Skipping GPU ADC tests: no Metal device available")
-            return nil
-        }
-        do {
-            return try MetalContext()
-        } catch {
-            print("Skipping GPU ADC tests: MetalContext unavailable (\(error))")
-            return nil
-        }
+            guard MTLCreateSystemDefaultDevice() != nil else {
+                print("Skipping GPU ADC tests: no Metal device available")
+                return nil
+            }
+            do {
+                return try MetalContext()
+            } catch {
+                print("Skipping GPU ADC tests: MetalContext unavailable (\(error))")
+                return nil
+            }
         #endif
     }
 }
 
+// swift-format-ignore: AlwaysUseLowerCamelCase
 private func trainPQ(dim: Int = 64, M: Int = 8) throws -> ProductQuantizer {
     let vectors = makeRandomVectors(count: 500, dim: dim, seed: 301)
     return try ProductQuantizer.train(

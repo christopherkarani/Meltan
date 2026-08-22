@@ -1,4 +1,5 @@
 import Testing
+
 @testable import MetalANNS
 
 @Suite("IndexConfiguration Tests")

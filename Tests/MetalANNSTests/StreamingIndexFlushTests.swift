@@ -1,15 +1,17 @@
 import Foundation
 import Testing
+
 @testable import MetalANNS
 
 @Suite("Advanced.StreamingIndex Flush Tests")
 struct StreamingIndexFlushTests {
     @Test("Flush merges all pending")
     func flushMergesAllPending() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 30,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 30,
+                mergeStrategy: .blocking
+            ))
 
         for i in 0..<50 {
             try await index.insert(makeVector(row: i, dim: 16), id: "v\(i)")
@@ -23,10 +25,11 @@ struct StreamingIndexFlushTests {
 
     @Test("Flush idempotent")
     func flushIdempotent() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 30,
-            mergeStrategy: .blocking
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 30,
+                mergeStrategy: .blocking
+            ))
 
         for i in 0..<20 {
             try await index.insert(makeVector(row: i, dim: 16), id: "v\(i)")
@@ -41,10 +44,11 @@ struct StreamingIndexFlushTests {
 
     @Test("Concurrent insert and search")
     func concurrentInsertAndSearch() async throws {
-        let index = Advanced.StreamingIndex(config: StreamingConfiguration(
-            deltaCapacity: 15,
-            mergeStrategy: .background
-        ))
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 15,
+                mergeStrategy: .background
+            ))
 
         let seedVectors = (0..<10).map { makeVector(row: $0, dim: 16) }
         let seedIDs = (0..<10).map { "seed-\($0)" }
@@ -68,7 +72,7 @@ struct StreamingIndexFlushTests {
             group.addTask {
                 _ = try await index.search(query: seedVectors[1], k: 10)
             }
-            for try await _ in group { }
+            for try await _ in group {}
         }
 
         try await index.flush()

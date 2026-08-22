@@ -128,11 +128,13 @@ public final class StreamingDatabase: Sendable {
 
     public func loadConfig() throws -> StreamingConfiguration? {
         try pool.read { db in
-            guard let json = try String.fetchOne(
-                db,
-                sql: "SELECT value FROM config WHERE key = ?",
-                arguments: ["streaming.config"]
-            ) else {
+            guard
+                let json = try String.fetchOne(
+                    db,
+                    sql: "SELECT value FROM config WHERE key = ?",
+                    arguments: ["streaming.config"]
+                )
+            else {
                 return nil
             }
 

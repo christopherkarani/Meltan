@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import MetalANNS
 @testable import MetalANNSCore
 
@@ -8,20 +9,20 @@ struct BatchSearchAdaptiveConcurrencyTests {
     @Test("gpuModeUsesQueuePoolCount")
     func gpuModeUsesQueuePoolCount() async throws {
         #if targetEnvironment(simulator)
-        return
-        #else
-        guard let context = makeContextOrSkip() else {
             return
-        }
+        #else
+            guard let context = makeContextOrSkip() else {
+                return
+            }
 
-        let index = GraphIndex(
-            configuration: IndexConfiguration(degree: 8, metric: .cosine),
-            context: context
-        )
+            let index = GraphIndex(
+                configuration: IndexConfiguration(degree: 8, metric: .cosine),
+                context: context
+            )
 
-        let maxConcurrency = await index.batchSearchMaxConcurrencyForTesting()
-        let queueCount = await context.queuePool.queues.count
-        #expect(maxConcurrency == queueCount)
+            let maxConcurrency = await index.batchSearchMaxConcurrencyForTesting()
+            let queueCount = await context.queuePool.queues.count
+            #expect(maxConcurrency == queueCount)
         #endif
     }
 
