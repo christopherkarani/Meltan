@@ -58,19 +58,19 @@ struct StreamingIndexMergeTests {
         let ids = (0..<300).map { "v\($0)" }
         try await index.batchInsert(vectors, ids: ids)
 
+        let flushDone = PollFlag()
         let flushTask = Task {
+            defer { flushDone.set() }
             try await index.flush()
         }
 
         var sawMerging = false
-        // Heavily loaded CI runners can take a long time to reach the merge
-        // after flush() is spawned (the inserts alone dominate this test's
-        // runtime on 3-vCPU runners), so poll against a generous wall-clock
-        // deadline rather than a fixed iteration count. The merge itself
-        // spans several actor suspension points (index builds), which a
-        // 1ms poll easily catches once it starts.
-        let deadline = ContinuousClock.now.advanced(by: .seconds(120))
-        while ContinuousClock.now < deadline {
+        // CI runners can take minutes from flush() starting to the merge
+        // actually beginning (index builds dominate), so keep polling until
+        // the flush completes rather than until a wall-clock deadline. The
+        // merge itself holds isMerging across several actor suspension
+        // points, which a 1ms poll catches easily once it starts.
+        while !flushDone.isSet {
             if await index.isMerging {
                 sawMerging = true
                 break
@@ -82,6 +82,25 @@ struct StreamingIndexMergeTests {
 
         #expect(sawMerging)
         #expect(await index.isMerging == false)
+    }
+
+    /// Sendable completion flag shared between the flush task and the
+    /// polling loop.
+    private final class PollFlag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = false
+
+        var isSet: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return value
+        }
+
+        func set() {
+            lock.lock()
+            defer { lock.unlock() }
+            value = true
+        }
     }
 
     private func makeVector(row: Int, dim: Int) -> [Float] {
