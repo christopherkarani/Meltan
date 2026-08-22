@@ -128,7 +128,7 @@ Add MetalANNS to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/christopherkarani/MetalANNS.git", from: "0.2.1")
+    .package(url: "https://github.com/christopherkarani/MetalANNS.git", from: "0.2.2")
 ]
 ```
 
