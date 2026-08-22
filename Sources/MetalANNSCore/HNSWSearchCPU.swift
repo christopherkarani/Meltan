@@ -10,7 +10,8 @@ public enum HNSWSearchCPU {
         k: Int,
         ef: Int,
         metric: Metric
-    ) async throws(ANNSError) -> [SearchResult] {
+    ) async throws -> [SearchResult] {
+        try Task.checkCancellation()
         guard k > 0 else {
             return []
         }
@@ -41,21 +42,15 @@ public enum HNSWSearchCPU {
             }
         }
 
-        do {
-            return try await BeamSearchCPU.search(
-                query: query,
-                vectors: vectors,
-                graph: baseGraph,
-                entryPoint: currentEntry,
-                k: k,
-                ef: ef,
-                metric: metric
-            )
-        } catch let error as ANNSError {
-            throw error
-        } catch {
-            throw ANNSError.searchFailed("HNSW layer-0 beam search failed: \(error.localizedDescription)")
-        }
+        return try await BeamSearchCPU.search(
+            query: query,
+            vectors: vectors,
+            graph: baseGraph,
+            entryPoint: currentEntry,
+            k: k,
+            ef: ef,
+            metric: metric
+        )
     }
 
     public static func search(
@@ -66,7 +61,8 @@ public enum HNSWSearchCPU {
         k: Int,
         ef: Int,
         metric: Metric
-    ) async throws(ANNSError) -> [SearchResult] {
+    ) async throws -> [SearchResult] {
+        try Task.checkCancellation()
         guard k > 0 else {
             return []
         }
@@ -101,21 +97,15 @@ public enum HNSWSearchCPU {
             }
         }
 
-        do {
-            return try await BeamSearchCPU.search(
-                query: query,
-                vectors: vectors,
-                graph: baseGraph,
-                entryPoint: currentEntry,
-                k: k,
-                ef: ef,
-                metric: metric
-            )
-        } catch let error as ANNSError {
-            throw error
-        } catch {
-            throw ANNSError.searchFailed("HNSW layer-0 beam search failed: \(error.localizedDescription)")
-        }
+        return try await BeamSearchCPU.search(
+            query: query,
+            vectors: vectors,
+            graph: baseGraph,
+            entryPoint: currentEntry,
+            k: k,
+            ef: ef,
+            metric: metric
+        )
     }
 
     static func greedySearchLayer(
