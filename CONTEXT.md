@@ -7,17 +7,27 @@ proximity graphs, searched on GPU or CPU, persisted, sharded, and streamed.
 
 ### Search
 
+**vector search**:
+Finding the nearest stored vectors for a query vector; the operation every search
+adapter implements.
+_Avoid_: ANN query, similarity query
+
 **graph search**:
-Beam search over the proximity graph; the operation every search backend implements.
-_Avoid_: vector scan, ANN query
+Beam search over the proximity graph. One of several adapters behind a vector search.
+_Avoid_: HNSW search
+
+**exact search**:
+Vector search by brute-force distance scan over the whole corpus — no graph;
+recall 1.0 by construction.
+_Avoid_: flat scan, brute force
 
 **search path**:
-Which adapter runs a graph search — `auto` (heuristic choice, falls back freely),
-`gpu`, or `cpu` (strict: throws if the requested adapter cannot run).
+Which adapter runs a vector search — `auto` (heuristic choice, falls back freely),
+or `exact`, `gpu`, `cpu` (strict: throws if the requested adapter cannot run).
 _Avoid_: forceGPU, execution mode, backend flag
 
 **candidate**:
-An `(internalID, score)` pair produced by graph search, before deletion filtering
+An `(internalID, score)` pair produced by vector search, before deletion filtering
 and ID mapping.
 _Avoid_: result, hit
 

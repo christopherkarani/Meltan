@@ -6,7 +6,8 @@ extension GraphIndex {
         query: [Float],
         k: Int,
         filter: _LegacySearchFilter? = nil,
-        metric: Metric? = nil
+        metric: Metric? = nil,
+        path: SearchPath = .auto
     ) async throws -> [SearchResult] {
         guard isBuilt, let vectors, let graph else {
             throw ANNSError.indexEmpty
@@ -37,105 +38,26 @@ extension GraphIndex {
         }
         let effectiveEf = max(configuration.efSearch, effectiveK)
 
-        var pendingFlatResults: [SearchResult]? = nil
-        if filter == nil,
-           deletedCount == 0,
-           MetalANNSCore.FlatGPUSearch.isEligible(
-               vectors: vectors,
-               metric: searchMetric,
-               k: effectiveK,
-               maxVectorCount: configuration.exactSearchMaxVectorCount
-           ) {
-            pendingFlatResults = try? await MetalANNSCore.FlatGPUSearch.search(
-                context: context,
-                query: normalizedQuery,
-                vectors: vectors,
-                k: effectiveK,
-                metric: searchMetric
-            )
-        }
-
-        let rawResults: [SearchResult]
-        if let flatResults = pendingFlatResults {
-            rawResults = flatResults
-        } else if let context,
-                  shouldUseHybridGPUSearch(
-                      for: vectors,
-                      metric: searchMetric,
-                      k: effectiveK,
-                      ef: effectiveEf
-                  ) {
-            do {
-                rawResults = try await SearchGPU.search(
-                    context: context,
-                    query: normalizedQuery,
-                    vectors: vectors,
-                    graph: graph,
-                    entryPoint: Int(entryPoint),
-                    k: max(1, effectiveK),
-                    ef: max(1, effectiveEf),
-                    metric: searchMetric
-                )
-            } catch {
-                if configuration.hnswConfiguration.enabled, hnsw == nil {
-                    try rebuildHNSWFromCurrentState()
-                }
-
-                let extractedVectors = extractVectors(from: vectors)
-                let extractedGraph = extractGraph(from: graph)
-
-                if let hnsw, searchMetric == configuration.metric {
-                    rawResults = try await HNSWSearchCPU.search(
-                        query: normalizedQuery,
-                        vectors: extractedVectors,
-                        hnsw: hnsw,
-                        baseGraph: extractedGraph,
-                        k: max(1, effectiveK),
-                        ef: max(1, effectiveEf),
-                        metric: searchMetric
-                    )
-                } else {
-                    rawResults = try await BeamSearchCPU.search(
-                        query: normalizedQuery,
-                        vectors: extractedVectors,
-                        graph: extractedGraph,
-                        entryPoint: Int(entryPoint),
-                        k: max(1, effectiveK),
-                        ef: max(1, effectiveEf),
-                        metric: searchMetric
-                    )
-                }
-            }
-        } else {
-            if configuration.hnswConfiguration.enabled, hnsw == nil {
-                try rebuildHNSWFromCurrentState()
-            }
-
-            let extractedVectors = extractVectors(from: vectors)
-            let extractedGraph = extractGraph(from: graph)
-
-            if let hnsw, searchMetric == configuration.metric {
-                rawResults = try await HNSWSearchCPU.search(
-                    query: normalizedQuery,
-                    vectors: extractedVectors,
-                    hnsw: hnsw,
-                    baseGraph: extractedGraph,
-                    k: max(1, effectiveK),
-                    ef: max(1, effectiveEf),
-                    metric: searchMetric
-                )
-            } else {
-                rawResults = try await BeamSearchCPU.search(
-                    query: normalizedQuery,
-                    vectors: extractedVectors,
-                    graph: extractedGraph,
-                    entryPoint: Int(entryPoint),
-                    k: max(1, effectiveK),
-                    ef: max(1, effectiveEf),
-                    metric: searchMetric
-                )
-            }
-        }
+        let rawResults: [SearchResult] = try await VectorSearch.execute(
+            context: context,
+            query: normalizedQuery,
+            vectors: vectors,
+            graph: graph,
+            entryPoint: Int(entryPoint),
+            k: effectiveK,
+            ef: effectiveEf,
+            metric: searchMetric,
+            degree: configuration.degree,
+            isBinary: vectors is BinaryVectorBuffer,
+            baseMetric: configuration.metric,
+            hnswEnabled: configuration.hnswConfiguration.enabled,
+            hnsw: hnsw,
+            ensureHNSW: { try await self.materializeHNSWForFallback() },
+            exactMaxVectorCount: configuration.exactSearchMaxVectorCount,
+            allowsExact: !hasFilter && deletedCount == 0,
+            path: path
+        )
+        .map { SearchResult(id: "", score: $0.score, internalID: $0.internalID) }
 
         var filtered = softDeletion.filterResults(rawResults)
         if let filter {
@@ -143,17 +65,7 @@ extension GraphIndex {
         }
 
         let mapped = filtered.compactMap { result -> SearchResult? in
-            let externalID = idMap.externalID(for: result.internalID) ?? ""
-            let numericID = idMap.numericID(for: result.internalID)
-            guard !externalID.isEmpty || numericID != nil else {
-                return nil
-            }
-            return SearchResult(
-                id: externalID,
-                score: result.score,
-                internalID: result.internalID,
-                numericID: numericID
-            )
+            Self.resolvedResult(from: result, idMap: idMap)
         }
         let output = Array(mapped.prefix(k))
         if let metricsRecorder, let searchStart {
@@ -168,7 +80,8 @@ extension GraphIndex {
         maxDistance: Float,
         limit: Int = 1000,
         filter: _LegacySearchFilter? = nil,
-        metric: Metric? = nil
+        metric: Metric? = nil,
+        path: SearchPath = .auto
     ) async throws -> [SearchResult] {
         guard isBuilt, let vectors, let graph else {
             throw ANNSError.indexEmpty
@@ -196,86 +109,26 @@ extension GraphIndex {
         let searchK = min(vectors.count, limit + deletedCount)
         let searchEf = min(vectors.count, max(configuration.efSearch, searchK * 2))
 
-        let rawResults: [SearchResult]
-        let canAttemptGPU = shouldUseHybridGPUSearch(
-            for: vectors,
-            metric: searchMetric,
+        let rawResults: [SearchResult] = try await VectorSearch.execute(
+            context: context,
+            query: normalizedQuery,
+            vectors: vectors,
+            graph: graph,
+            entryPoint: Int(entryPoint),
             k: searchK,
-            ef: searchEf
+            ef: searchEf,
+            metric: searchMetric,
+            degree: configuration.degree,
+            isBinary: vectors is BinaryVectorBuffer,
+            baseMetric: configuration.metric,
+            hnswEnabled: configuration.hnswConfiguration.enabled,
+            hnsw: hnsw,
+            ensureHNSW: { try await self.materializeHNSWForFallback() },
+            exactMaxVectorCount: configuration.exactSearchMaxVectorCount,
+            allowsExact: false,
+            path: path
         )
-
-        if let context, canAttemptGPU {
-            do {
-                rawResults = try await SearchGPU.search(
-                    context: context,
-                    query: normalizedQuery,
-                    vectors: vectors,
-                    graph: graph,
-                    entryPoint: Int(entryPoint),
-                    k: max(1, searchK),
-                    ef: max(1, searchEf),
-                    metric: searchMetric
-                )
-            } catch {
-                if configuration.hnswConfiguration.enabled, hnsw == nil {
-                    try rebuildHNSWFromCurrentState()
-                }
-
-                let extractedVectors = extractVectors(from: vectors)
-                let extractedGraph = extractGraph(from: graph)
-
-                if let hnsw, searchMetric == configuration.metric {
-                    rawResults = try await HNSWSearchCPU.search(
-                        query: normalizedQuery,
-                        vectors: extractedVectors,
-                        hnsw: hnsw,
-                        baseGraph: extractedGraph,
-                        k: max(1, searchK),
-                        ef: max(1, searchEf),
-                        metric: searchMetric
-                    )
-                } else {
-                    rawResults = try await BeamSearchCPU.search(
-                        query: normalizedQuery,
-                        vectors: extractedVectors,
-                        graph: extractedGraph,
-                        entryPoint: Int(entryPoint),
-                        k: max(1, searchK),
-                        ef: max(1, searchEf),
-                        metric: searchMetric
-                    )
-                }
-            }
-        } else {
-            if configuration.hnswConfiguration.enabled, hnsw == nil {
-                try rebuildHNSWFromCurrentState()
-            }
-
-            let extractedVectors = extractVectors(from: vectors)
-            let extractedGraph = extractGraph(from: graph)
-
-            if let hnsw, searchMetric == configuration.metric {
-                rawResults = try await HNSWSearchCPU.search(
-                    query: normalizedQuery,
-                    vectors: extractedVectors,
-                    hnsw: hnsw,
-                    baseGraph: extractedGraph,
-                    k: max(1, searchK),
-                    ef: max(1, searchEf),
-                    metric: searchMetric
-                )
-            } else {
-                rawResults = try await BeamSearchCPU.search(
-                    query: normalizedQuery,
-                    vectors: extractedVectors,
-                    graph: extractedGraph,
-                    entryPoint: Int(entryPoint),
-                    k: max(1, searchK),
-                    ef: max(1, searchEf),
-                    metric: searchMetric
-                )
-            }
-        }
+        .map { SearchResult(id: "", score: $0.score, internalID: $0.internalID) }
 
         var filtered = softDeletion.filterResults(rawResults)
         if let filter {
@@ -284,17 +137,7 @@ extension GraphIndex {
         let withinRange = filtered.filter { $0.score <= maxDistance }
 
         let mapped = withinRange.compactMap { result -> SearchResult? in
-            let externalID = idMap.externalID(for: result.internalID) ?? ""
-            let numericID = idMap.numericID(for: result.internalID)
-            guard !externalID.isEmpty || numericID != nil else {
-                return nil
-            }
-            return SearchResult(
-                id: externalID,
-                score: result.score,
-                internalID: result.internalID,
-                numericID: numericID
-            )
+            Self.resolvedResult(from: result, idMap: idMap)
         }
         let output = Array(mapped.prefix(limit))
         if let metricsRecorder, let searchStart {
@@ -308,7 +151,8 @@ extension GraphIndex {
         queries: [[Float]],
         k: Int,
         filter: _LegacySearchFilter? = nil,
-        metric: Metric? = nil
+        metric: Metric? = nil,
+        path: SearchPath = .auto
     ) async throws -> [[SearchResult]] {
         guard isBuilt else {
             throw ANNSError.indexEmpty
@@ -320,16 +164,18 @@ extension GraphIndex {
             await metrics.recordBatchSearch()
         }
 
-        if let vectors, filter == nil,
+        // Batched exact tier: one dispatch per chunk instead of one per hop.
+        // Only meaningful on the auto path — strict paths name their adapter.
+        if path == .auto, let vectors, filter == nil,
            softDeletion.deletedCount == 0,
-           MetalANNSCore.FlatGPUSearch.isEligible(
+           FlatGPUSearch.isEligible(
                vectors: vectors,
                metric: metric ?? configuration.metric,
                k: k,
                maxVectorCount: configuration.exactSearchMaxVectorCount
            ) {
             do {
-                let flatResults = try await MetalANNSCore.FlatGPUSearch.batchSearch(
+                let flatResults = try await FlatGPUSearch.batchSearch(
                     context: context,
                     queries: queries,
                     vectors: vectors,
@@ -338,17 +184,7 @@ extension GraphIndex {
                 )
                 let mapped = flatResults.map { results in
                     results.compactMap { result -> SearchResult? in
-                        let externalID = idMap.externalID(for: result.internalID) ?? ""
-                        let numericID = idMap.numericID(for: result.internalID)
-                        guard !externalID.isEmpty || numericID != nil else {
-                            return nil
-                        }
-                        return SearchResult(
-                            id: externalID,
-                            score: result.score,
-                            internalID: result.internalID,
-                            numericID: numericID
-                        )
+                        Self.resolvedResult(from: result, idMap: idMap)
                     }
                 }
                 return mapped.map { Array($0.prefix(k)) }
@@ -368,7 +204,7 @@ extension GraphIndex {
                 let query = queries[idx]
                 nextIndex += 1
                 group.addTask { [self] in
-                    let result = try await self.search(query: query, k: k, filter: filter, metric: metric)
+                    let result = try await self.search(query: query, k: k, filter: filter, metric: metric, path: path)
                     return (idx, result)
                 }
             }
@@ -380,7 +216,7 @@ extension GraphIndex {
                     let query = queries[idx]
                     nextIndex += 1
                     group.addTask { [self] in
-                        let result = try await self.search(query: query, k: k, filter: filter, metric: metric)
+                        let result = try await self.search(query: query, k: k, filter: filter, metric: metric, path: path)
                         return (idx, result)
                     }
                 }
@@ -398,4 +234,19 @@ extension GraphIndex {
         await batchSearchMaxConcurrency()
     }
 
+    /// Maps an internal-slot result onto its external key(s), dropping slots
+    /// with no resolvable identity.
+    fileprivate static func resolvedResult(from result: SearchResult, idMap: IDMap) -> SearchResult? {
+        let externalID = idMap.externalID(for: result.internalID) ?? ""
+        let numericID = idMap.numericID(for: result.internalID)
+        guard !externalID.isEmpty || numericID != nil else {
+            return nil
+        }
+        return SearchResult(
+            id: externalID,
+            score: result.score,
+            internalID: result.internalID,
+            numericID: numericID
+        )
+    }
 }

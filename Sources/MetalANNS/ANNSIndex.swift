@@ -10,10 +10,7 @@ internal struct _PersistedMetadata: Codable, Sendable {
 }
 
 public actor GraphIndex {
-    internal static let fullGPUMaxEF = 256
     internal static let minGPUConstructionNodeCount = 4_096
-    internal static let minHybridGPUSearchNodeCount = 4_096
-    internal static let minHybridGPUSearchWork = 16_384
 
     internal var configuration: IndexConfiguration
     internal var context: MetalContext?

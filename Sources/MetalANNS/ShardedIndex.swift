@@ -2,6 +2,11 @@ import Foundation
 import MetalANNSCore
 
 public actor _ShardedIndex {
+    /// Recall-depth floor for per-shard candidate sets under batched queries.
+    /// Value preserved numerically from pre-seam tuning (it originally doubled
+    /// as GPU-path avoidance; shards now request the CPU path explicitly).
+    private static let batchedShardCandidateFloor = 257
+
     private let numShards: Int
     private let nprobe: Int
     private let configuration: IndexConfiguration
@@ -270,10 +275,13 @@ public actor _ShardedIndex {
             metric: searchMetric,
             count: probeCount
         )
-        // Batch mode uses a deeper per-shard candidate set. Keeping this above
-        // the GPU beam-search cutoff steers toward the CPU/HNSW path, which is
-        // currently more stable for batched sharded recall.
-        let perShardK = max(k, max(257, min(512, max(configuration.efSearch * 4, k * 16))))
+        // Batch mode uses a deeper per-shard candidate set for merge recall and
+        // routes shards down the CPU graph path explicitly: GPU beam recall was
+        // historically less stable under concurrent sharded merges.
+        let perShardK = max(
+            k,
+            max(Self.batchedShardCandidateFloor, min(512, max(configuration.efSearch * 4, k * 16)))
+        )
 
         var mergedResults = TopResults(limit: k)
 
@@ -285,7 +293,8 @@ public actor _ShardedIndex {
                         query: query,
                         k: perShardK,
                         filter: filter,
-                        metric: metric
+                        metric: metric,
+                        path: .cpu
                     )
                 }
             }

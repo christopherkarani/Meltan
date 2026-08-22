@@ -119,7 +119,8 @@ struct BenchmarkRunner {
         dataset: BenchmarkDataset,
         concurrency: Int,
         repeatRuns: Int = 1,
-        warmupRuns: Int = 0
+        warmupRuns: Int = 0,
+        path: SearchPath = .auto
     ) async throws -> Results {
         let normalizedConfig = normalize(config)
 
@@ -154,7 +155,8 @@ struct BenchmarkRunner {
             expectedNeighbors: expectedNeighbors,
             repeatRuns: repeatRuns,
             warmupRuns: warmupRuns,
-            concurrency: max(1, concurrency)
+            concurrency: max(1, concurrency),
+            path: path
         )
     }
 
@@ -217,18 +219,27 @@ struct BenchmarkRunner {
         )
     }
 
+    /// Maps a `--compare` backend label onto an explicit `SearchPath`.
+    static func parseSearchPath(_ label: String) throws -> SearchPath {
+        switch label.lowercased() {
+        case "auto": return .auto
+        case "exact", "flat": return .exact
+        case "gpu": return .gpu
+        case "cpu": return .cpu
+        default:
+            throw BenchmarkDatasetError.invalidDataset(
+                "Unknown backend label '\(label)'; expected auto, exact, gpu, or cpu"
+            )
+        }
+    }
+
     /// Multi-backend comparator.
     ///
-    /// IMPORTANT: `GraphIndex` does not currently expose a public knob for
-    /// selecting between its CPU / GPU / GPU-ADC search backends — the choice
-    /// is made internally by `shouldUseHybridGPUSearch` based on workload size,
-    /// metric, and EF parameters. As a result, this comparator runs the
-    /// *same* index implementation for every requested label; the per-label
-    /// rows it emits measure run-to-run variance of the auto-selected backend
-    /// for that workload, not differences between distinct backends.
-    /// `main.swift` prints a warning to that effect when `--compare` is
-    /// invoked. The function is structured so that switching to per-label
-    /// backend selection is a one-line change once such a public knob exists.
+    /// Each label maps onto a strict `SearchPath` (`auto`, `exact`, `gpu`, `cpu`),
+    /// so per-label rows measure genuinely different adapters for the same
+    /// workload. Strict paths throw when the requested adapter cannot serve the
+    /// workload (e.g. `.gpu` above the beam EF cap), so treat thrown labels as
+    /// "not applicable" rather than silently re-running another path.
     static func compareBackends(
         config: Config,
         dataset: BenchmarkDataset,
@@ -241,12 +252,14 @@ struct BenchmarkRunner {
         rows.reserveCapacity(backendLabels.count)
 
         for backendLabel in backendLabels {
+            let path = try parseSearchPath(backendLabel)
             let result = try await runConcurrent(
                 config: config,
                 dataset: dataset,
                 concurrency: max(1, concurrency),
                 repeatRuns: repeatRuns,
-                warmupRuns: warmupRuns
+                warmupRuns: warmupRuns,
+                path: path
             )
             rows.append(
                 BenchmarkReport.Row(
@@ -285,7 +298,7 @@ struct BenchmarkRunner {
                 "dimension": "\(dataset.dimension)",
                 "metric": dataset.metric.rawValue,
                 "compare": backendLabels.joined(separator: ","),
-                "compareNote": "no public backend selector; rows reflect auto-selected backend variance"
+                "compareNote": "labels map onto strict SearchPath values (auto/exact/gpu/cpu)"
             ]
         )
     }
@@ -351,7 +364,8 @@ struct BenchmarkRunner {
         expectedNeighbors: [[UInt32]],
         repeatRuns: Int,
         warmupRuns: Int,
-        concurrency: Int = 1
+        concurrency: Int = 1,
+        path: SearchPath = .auto
     ) async throws -> Results {
         guard !indexVectors.isEmpty else {
             throw BenchmarkDatasetError.invalidDataset("index vectors cannot be empty")
@@ -398,7 +412,7 @@ struct BenchmarkRunner {
 
         let firstQuery = queries[0]
         let coldStart = DispatchTime.now().uptimeNanoseconds
-        _ = try await index.search(query: firstQuery, k: queryK)
+        _ = try await index.search(query: firstQuery, k: queryK, path: path)
         let coldEnd = DispatchTime.now().uptimeNanoseconds
         let firstQueryLatencyMs = Double(coldEnd - coldStart) / 1_000_000.0
 
@@ -414,7 +428,8 @@ struct BenchmarkRunner {
                         queries: queries,
                         expectedNeighbors: expectedNeighbors,
                         concurrency: effectiveConcurrency,
-                        measureLatency: false
+                        measureLatency: false,
+                        path: path
                     )
                 } else {
                     _ = try await benchmarkBatch(
@@ -425,7 +440,8 @@ struct BenchmarkRunner {
                         top100Count: top100Count,
                         queries: queries,
                         expectedNeighbors: expectedNeighbors,
-                        measureLatency: false
+                        measureLatency: false,
+                        path: path
                     )
                 }
             }
@@ -450,7 +466,8 @@ struct BenchmarkRunner {
                     queries: queries,
                     expectedNeighbors: expectedNeighbors,
                     concurrency: effectiveConcurrency,
-                    measureLatency: true
+                    measureLatency: true,
+                    path: path
                 )
             } else {
                 batchStats = try await benchmarkBatch(
@@ -461,7 +478,8 @@ struct BenchmarkRunner {
                     top100Count: top100Count,
                     queries: queries,
                     expectedNeighbors: expectedNeighbors,
-                    measureLatency: true
+                    measureLatency: true,
+                    path: path
                 )
             }
 
@@ -518,7 +536,8 @@ struct BenchmarkRunner {
         top100Count: Int,
         queries: [[Float]],
         expectedNeighbors: [[UInt32]],
-        measureLatency: Bool
+        measureLatency: Bool,
+        path: SearchPath = .auto
     ) async throws -> BenchmarkBatchStats {
         var latencies: [Double] = []
         if measureLatency {
@@ -534,7 +553,7 @@ struct BenchmarkRunner {
             let expected = expectedNeighbors[queryIndex]
 
             let searchStart = DispatchTime.now().uptimeNanoseconds
-            let approx = try await index.search(query: query, k: queryK)
+            let approx = try await index.search(query: query, k: queryK, path: path)
             let searchEnd = DispatchTime.now().uptimeNanoseconds
 
             if measureLatency {
@@ -579,7 +598,8 @@ struct BenchmarkRunner {
         queries: [[Float]],
         expectedNeighbors: [[UInt32]],
         concurrency: Int,
-        measureLatency: Bool
+        measureLatency: Bool,
+        path: SearchPath = .auto
     ) async throws -> BenchmarkBatchStats {
         let inflight = max(1, concurrency)
         let queryCount = queries.count
@@ -607,7 +627,8 @@ struct BenchmarkRunner {
                         top1Count: top1Count,
                         top10Count: top10Count,
                         top100Count: top100Count,
-                        measureLatency: measureLatency
+                        measureLatency: measureLatency,
+                        path: path
                     )
                 }
                 dispatched += 1
@@ -633,7 +654,8 @@ struct BenchmarkRunner {
                             top1Count: top1Count,
                             top10Count: top10Count,
                             top100Count: top100Count,
-                            measureLatency: measureLatency
+                            measureLatency: measureLatency,
+                            path: path
                         )
                     }
                     dispatched += 1
@@ -676,10 +698,11 @@ struct BenchmarkRunner {
         top1Count: Int,
         top10Count: Int,
         top100Count: Int,
-        measureLatency: Bool
+        measureLatency: Bool,
+        path: SearchPath = .auto
     ) async throws -> PerQueryStats {
         let searchStart = DispatchTime.now().uptimeNanoseconds
-        let approx = try await index.search(query: query, k: queryK)
+        let approx = try await index.search(query: query, k: queryK, path: path)
         let searchEnd = DispatchTime.now().uptimeNanoseconds
 
         let latencyMs = measureLatency

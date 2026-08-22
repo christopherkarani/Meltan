@@ -168,7 +168,7 @@ The lower-level actors (`_GraphIndex`, `_StreamingIndex`, `_ShardedIndex`, `_IVF
 
 `BENCHMARKS.md` records the current baseline. When changing hot paths, re-run the relevant benchmark/test and update `BENCHMARKS.md` if numbers shift materially. Key things the current baseline depends on (do not regress silently):
 
-- `_GraphIndex` routes small builds/searches to CPU — see the `minGPUConstructionNodeCount` / `minHybridGPUSearchNodeCount` thresholds at the top of `ANNSIndex.swift`. Removing this workload-aware gating historically caused a >65× regression on small workloads.
+- `_GraphIndex` routes small builds/searches to CPU — see `minGPUConstructionNodeCount` at the top of `ANNSIndex.swift` (construction) and the workload gates in `VectorSearch.swift` (`MetalANNSCore`). Removing this workload-aware gating historically caused a >65× regression on small workloads.
 - GPU search and GPU ADC reuse workspaces from `SearchBufferPool`; do not allocate fresh `MTLBuffer`s per query/expansion.
 - IVFPQ add/train/search path avoids per-call sorting and planning overhead; watch for accidental reintroduction when refactoring.
 - `KMeans` Lloyd iterations parallelize safely — keep the subspace-materialization fast paths intact.

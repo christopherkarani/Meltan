@@ -219,7 +219,7 @@ func printUsage() {
     print("  MetalANNSBenchmarks --ivfpq                                                    # ANS vs IVFPQ (synthetic if no dataset)")
     print("  MetalANNSBenchmarks --concurrency 8                                            # single run with N in-flight queries")
     print("  MetalANNSBenchmarks --concurrency-sweep 1,2,4,8,16                              # sweep concurrency levels")
-    print("  MetalANNSBenchmarks --compare cpu,gpu,gpu-adc                                   # multi-backend compare (see note)")
+    print("  MetalANNSBenchmarks --compare auto,exact,gpu,cpu                             # multi-backend compare")
     print("\nOPTIONS:")
     print("  --query-count <n>        override number of query vectors")
     print("  --seed <n>               deterministic seed for synthetic dataset")
@@ -238,7 +238,7 @@ func printUsage() {
     print("  --k <n>")
     print("  --concurrency <n>           single concurrency level for normal runs (default 1)")
     print("  --concurrency-sweep <list>  comma-separated concurrency levels (e.g. 1,2,4,8,16); switches mode to concurrency sweep")
-    print("  --compare <list>            comma-separated backend labels; emits one row per label (NOTE: GraphIndex has no public backend selector — see warning at startup)")
+    print("  --compare <list>            comma-separated backend labels (auto, exact, gpu, cpu); one row per label")
     print("  --ivfpq-subspaces <n>")
     print("  --ivfpq-centroids <n>")
     print("  --ivfpq-coarse-centroids <n>")
@@ -743,18 +743,10 @@ do {
         }
 
     case .compare:
-        // GraphIndex does not currently expose a public knob for selecting between
-        // its CPU / GPU / GPU-ADC search backends — the choice is made internally
-        // based on workload size, metric, and EF parameters. We emit one row per
-        // requested label so users can still measure variance, but they should
-        // interpret the rows accordingly.
-        fputs(
-            "warning: --compare requested but GraphIndex has no public backend selector. " +
-            "All rows below run the same auto-selected backend; per-label values reflect " +
-            "run-to-run variance, not differences between distinct backends.\n",
-            stderr
-        )
-
+        // Each label maps onto a strict SearchPath (auto/exact/gpu/cpu), so
+        // per-label rows measure genuinely different adapters. A label whose
+        // path cannot serve the workload throws rather than silently running
+        // another adapter — see BenchmarkRunner.compareBackends.
         let dataset: BenchmarkDataset
         let datasetLabel: String
 

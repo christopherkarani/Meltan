@@ -14,10 +14,6 @@ extension GraphIndex {
         context?.device
     }
 
-    internal func supportsGPUSearch(for vectors: any VectorStorage) -> Bool {
-        !(vectors is BinaryVectorBuffer)
-    }
-
     internal func shouldUseGPUConstruction(nodeCount: Int) -> Bool {
         guard context != nil else {
             return false
@@ -28,29 +24,13 @@ extension GraphIndex {
         return nodeCount >= Self.minGPUConstructionNodeCount
     }
 
-    internal func shouldUseHybridGPUSearch(
-        for vectors: any VectorStorage,
-        metric: Metric,
-        k: Int,
-        ef: Int
-    ) -> Bool {
-        guard supportsGPUSearch(for: vectors) else {
-            return false
+    /// Lazily builds the HNSW overlay before a CPU-path search, memoizing it
+    /// on the actor. Called through `VectorSearch.execute`'s `ensureHNSW` hook.
+    internal func materializeHNSWForFallback() throws -> HNSWLayers? {
+        if configuration.hnswConfiguration.enabled, hnsw == nil {
+            try rebuildHNSWFromCurrentState()
         }
-        guard metric != .hamming else {
-            return false
-        }
-        guard k <= Self.fullGPUMaxEF, ef <= Self.fullGPUMaxEF else {
-            return false
-        }
-
-        let nodeCount = vectors.count
-        guard nodeCount >= Self.minHybridGPUSearchNodeCount else {
-            return false
-        }
-
-        let estimatedDistanceWork = max(k, ef) * max(configuration.degree, 1)
-        return estimatedDistanceWork >= Self.minHybridGPUSearchWork
+        return hnsw
     }
 
     internal func applyLoadedState(
@@ -94,25 +74,11 @@ extension GraphIndex {
 
         hnsw = try HNSWBuilder.buildLayers(
             vectors: vectors,
-            graph: extractGraph(from: graph),
+            graph: VectorSearch.extractGraph(from: graph),
             nodeCount: vectors.count,
             metric: configuration.metric,
             config: configuration.hnswConfiguration
         )
-    }
-
-    internal func extractVectors(from vectors: any VectorStorage) -> [[Float]] {
-        (0..<vectors.count).map { vectors.vector(at: $0) }
-    }
-
-    internal func extractGraph(from graph: GraphBuffer) -> [[(UInt32, Float)]] {
-        (0..<graph.nodeCount).map { nodeID in
-            let ids = graph.neighborIDs(of: nodeID)
-            let distances = graph.neighborDistances(of: nodeID)
-            return zip(ids, distances)
-                .filter { $0.0 != UInt32.max }
-                .map { ($0.0, $0.1) }
-        }
     }
 
     internal nonisolated static func quantizeForHamming(_ vector: [Float]) -> [Float] {
