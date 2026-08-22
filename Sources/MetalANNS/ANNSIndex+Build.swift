@@ -4,7 +4,7 @@ import MetalANNSCore
 
 extension GraphIndex {
     public func build(vectors inputVectors: [[Float]], ids: [String]) async throws {
-        guard !isBuilt else {
+        guard case .empty = lifecycle else {
             throw ANNSError.constructionFailed("Index is already built. Create a new GraphIndex to rebuild.")
         }
         guard !inputVectors.isEmpty else {
@@ -119,15 +119,16 @@ extension GraphIndex {
             metric: configuration.metric
         )
 
-        self.vectors = vectorBuffer
-        self.graph = graphBuffer
         self.idMap = builtIDMap
         self.softDeletion = SoftDeletion()
         self.metadataStore = MetadataStore()
-        self.entryPoint = builtEntryPoint
-        self.isBuilt = true
-        self.isReadOnlyLoadedIndex = false
-        self.mmapLifetime = nil
+        self.lifecycle = .ready(
+            ReadyState(
+                vectors: vectorBuffer,
+                graph: graphBuffer,
+                entryPoint: builtEntryPoint
+            )
+        )
         self.pendingRepairIDs.removeAll()
         self.hnsw = nil
     }

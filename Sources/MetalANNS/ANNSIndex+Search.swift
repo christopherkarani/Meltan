@@ -8,7 +8,7 @@ extension GraphIndex {
         filter: _LegacySearchFilter? = nil,
         metric: Metric? = nil
     ) async throws -> [SearchResult] {
-        guard isBuilt, let vectors, let graph else {
+        guard let (vectors, graph, entryPoint) = lifecycle.builtState else {
             throw ANNSError.indexEmpty
         }
         guard query.count == vectors.dim else {
@@ -183,7 +183,7 @@ extension GraphIndex {
         filter: _LegacySearchFilter? = nil,
         metric: Metric? = nil
     ) async throws -> [SearchResult] {
-        guard isBuilt, let vectors, let graph else {
+        guard let (vectors, graph, entryPoint) = lifecycle.builtState else {
             throw ANNSError.indexEmpty
         }
         guard query.count == vectors.dim else {
@@ -324,7 +324,7 @@ extension GraphIndex {
         filter: _LegacySearchFilter? = nil,
         metric: Metric? = nil
     ) async throws -> [[SearchResult]] {
-        guard isBuilt else {
+        guard let builtState = lifecycle.builtState else {
             throw ANNSError.indexEmpty
         }
         guard !queries.isEmpty else {
@@ -338,10 +338,10 @@ extension GraphIndex {
         // then drop deleted rows — each deletion demotes a survivor by at most
         // one rank, so the filtered list is the true top-k survivors.
         let deletedCount = softDeletion.deletedCount
-        let batchEffectiveK = min((vectors?.count ?? k), k + deletedCount)
-        if let vectors, filter == nil,
+        let batchEffectiveK = min(builtState.vectors.count, k + deletedCount)
+        if filter == nil,
             MetalANNSCore.FlatGPUSearch.isEligible(
-                vectors: vectors,
+                vectors: builtState.vectors,
                 metric: metric ?? configuration.metric,
                 k: batchEffectiveK,
                 maxVectorCount: configuration.exactSearchMaxVectorCount
@@ -351,7 +351,7 @@ extension GraphIndex {
                 let flatResults = try await MetalANNSCore.FlatGPUSearch.batchSearch(
                     context: context,
                     queries: queries,
-                    vectors: vectors,
+                    vectors: builtState.vectors,
                     k: batchEffectiveK,
                     metric: metric ?? configuration.metric
                 )

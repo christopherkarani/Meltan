@@ -55,25 +55,16 @@ extension GraphIndex {
 
     internal func applyLoadedState(
         configuration: IndexConfiguration,
-        vectors: any VectorStorage,
-        graph: GraphBuffer,
+        lifecycle newState: Lifecycle,
         idMap: IDMap,
-        entryPoint: UInt32,
         softDeletion: SoftDeletion,
-        metadataStore: MetadataStore = MetadataStore(),
-        isReadOnlyLoadedIndex: Bool = false,
-        mmapLifetime: AnyObject? = nil
+        metadataStore: MetadataStore = MetadataStore()
     ) {
         self.configuration = configuration
-        self.vectors = vectors
-        self.graph = graph
         self.idMap = idMap
-        self.entryPoint = entryPoint
         self.softDeletion = softDeletion
         self.metadataStore = metadataStore
-        self.isBuilt = true
-        self.isReadOnlyLoadedIndex = isReadOnlyLoadedIndex
-        self.mmapLifetime = mmapLifetime
+        self.lifecycle = newState
         self.pendingRepairIDs.removeAll()
         self.hnsw = nil
     }
@@ -83,7 +74,7 @@ extension GraphIndex {
             hnsw = nil
             return
         }
-        guard let vectors, let graph else {
+        guard let (vectors, graph, _) = lifecycle.builtState else {
             hnsw = nil
             return
         }

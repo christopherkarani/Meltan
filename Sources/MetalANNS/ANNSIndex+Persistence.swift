@@ -3,7 +3,7 @@ import MetalANNSCore
 
 extension GraphIndex {
     public func save(to url: URL) async throws {
-        guard isBuilt, let vectors, let graph else {
+        guard let (vectors, graph, entryPoint) = lifecycle.builtState else {
             throw ANNSError.indexEmpty
         }
 
@@ -45,7 +45,7 @@ extension GraphIndex {
     }
 
     public func saveMmapCompatible(to url: URL) async throws {
-        guard isBuilt, let vectors, let graph else {
+        guard let (vectors, graph, entryPoint) = lifecycle.builtState else {
             throw ANNSError.indexEmpty
         }
 
@@ -104,10 +104,14 @@ extension GraphIndex {
 
         await index.applyLoadedState(
             configuration: resolvedConfiguration,
-            vectors: loaded.vectors,
-            graph: loaded.graph,
+            lifecycle: .ready(
+                ReadyState(
+                    vectors: loaded.vectors,
+                    graph: loaded.graph,
+                    entryPoint: loaded.entryPoint
+                )
+            ),
             idMap: resolvedIDMap,
-            entryPoint: loaded.entryPoint,
             softDeletion: persistedState.softDeletion,
             metadataStore: persistedState.metadataStore
         )
@@ -133,14 +137,17 @@ extension GraphIndex {
 
         await index.applyLoadedState(
             configuration: resolvedConfiguration,
-            vectors: loaded.vectors,
-            graph: loaded.graph,
+            lifecycle: .loaded(
+                LoadedState(
+                    vectors: loaded.vectors,
+                    graph: loaded.graph,
+                    entryPoint: loaded.entryPoint,
+                    mmapLifetime: loaded.mmapLifetime
+                )
+            ),
             idMap: resolvedIDMap,
-            entryPoint: loaded.entryPoint,
             softDeletion: persistedState.softDeletion,
-            metadataStore: persistedState.metadataStore,
-            isReadOnlyLoadedIndex: true,
-            mmapLifetime: loaded.mmapLifetime
+            metadataStore: persistedState.metadataStore
         )
         try await index.rebuildHNSWFromCurrentState()
 
@@ -165,14 +172,17 @@ extension GraphIndex {
 
         await index.applyLoadedState(
             configuration: resolvedConfiguration,
-            vectors: diskBacked.vectors,
-            graph: diskBacked.graph,
+            lifecycle: .loaded(
+                LoadedState(
+                    vectors: diskBacked.vectors,
+                    graph: diskBacked.graph,
+                    entryPoint: diskBacked.entryPoint,
+                    mmapLifetime: diskBacked.mmapLifetime
+                )
+            ),
             idMap: resolvedIDMap,
-            entryPoint: diskBacked.entryPoint,
             softDeletion: persistedState.softDeletion,
-            metadataStore: persistedState.metadataStore,
-            isReadOnlyLoadedIndex: true,
-            mmapLifetime: diskBacked.mmapLifetime
+            metadataStore: persistedState.metadataStore
         )
         try await index.rebuildHNSWFromCurrentState()
 
@@ -184,7 +194,7 @@ extension GraphIndex {
     }
 
     func streamingActiveExternalIDs() throws -> [String] {
-        guard isBuilt, let vectors else {
+        guard let (vectors, _, _) = lifecycle.builtState else {
             throw ANNSError.indexEmpty
         }
 
@@ -204,7 +214,7 @@ extension GraphIndex {
     }
 
     func streamingActiveRecords() throws -> (vectors: [[Float]], ids: [String]) {
-        guard isBuilt, let vectors else {
+        guard let (vectors, _, _) = lifecycle.builtState else {
             throw ANNSError.indexEmpty
         }
 

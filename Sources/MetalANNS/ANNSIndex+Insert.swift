@@ -3,12 +3,7 @@ import MetalANNSCore
 
 extension GraphIndex {
     public func insert(_ vector: [Float], id: String) async throws {
-        guard isBuilt, let vectors, let graph else {
-            throw ANNSError.indexEmpty
-        }
-        guard !isReadOnlyLoadedIndex else {
-            throw ANNSError.constructionFailed("Index is read-only (mmap-loaded)")
-        }
+        let (vectors, graph, entryPoint) = try requireMutableState()
         guard vector.count == vectors.dim else {
             throw ANNSError.dimensionMismatch(expected: vectors.dim, got: vector.count)
         }
@@ -57,7 +52,7 @@ extension GraphIndex {
             if repairConfig.enabled && repairConfig.repairInterval > 0 {
                 pendingRepairIDs.append(UInt32(slot))
                 if pendingRepairIDs.count >= repairConfig.repairInterval {
-                    try triggerRepair(throwOnFailure: false)
+                    try triggerRepair(vectors: vectors, graph: graph, throwOnFailure: false)
                 }
             }
 
@@ -88,12 +83,7 @@ extension GraphIndex {
     /// Inserts a vector with a numeric (UInt64) key.
     /// For use by Wax's UInt64 frameId-based API.
     public func insert(_ vector: [Float], numericID: UInt64) async throws {
-        guard isBuilt, let vectors, let graph else {
-            throw ANNSError.indexEmpty
-        }
-        guard !isReadOnlyLoadedIndex else {
-            throw ANNSError.constructionFailed("Index is read-only (mmap-loaded)")
-        }
+        let (vectors, graph, entryPoint) = try requireMutableState()
         guard vector.count == vectors.dim else {
             throw ANNSError.dimensionMismatch(expected: vectors.dim, got: vector.count)
         }
@@ -142,7 +132,7 @@ extension GraphIndex {
             if repairConfig.enabled && repairConfig.repairInterval > 0 {
                 pendingRepairIDs.append(UInt32(slot))
                 if pendingRepairIDs.count >= repairConfig.repairInterval {
-                    try triggerRepair(throwOnFailure: false)
+                    try triggerRepair(vectors: vectors, graph: graph, throwOnFailure: false)
                 }
             }
 
@@ -171,12 +161,7 @@ extension GraphIndex {
     }
 
     public func batchInsert(_ vectors: [[Float]], ids: [String]) async throws {
-        guard isBuilt, let vectorStorage = self.vectors, let graph else {
-            throw ANNSError.indexEmpty
-        }
-        guard !isReadOnlyLoadedIndex else {
-            throw ANNSError.constructionFailed("Index is read-only (mmap-loaded)")
-        }
+        let (vectorStorage, graph, entryPoint) = try requireMutableState()
         guard vectors.count == ids.count else {
             throw ANNSError.constructionFailed("Vector and ID counts do not match")
         }
@@ -254,7 +239,7 @@ extension GraphIndex {
             let repairConfig = configuration.repairConfiguration
             if repairConfig.enabled {
                 pendingRepairIDs.append(contentsOf: slots.map(UInt32.init))
-                try triggerRepair(throwOnFailure: false)
+                try triggerRepair(vectors: vectorStorage, graph: graph, throwOnFailure: false)
             }
 
             for (offset, id) in ids.enumerated() {
@@ -292,22 +277,18 @@ extension GraphIndex {
     }
 
     public func repair() throws(ANNSError) {
-        guard !isReadOnlyLoadedIndex else {
-            throw ANNSError.constructionFailed("Index is read-only (mmap-loaded)")
-        }
-        guard isBuilt, vectors != nil, graph != nil else {
-            throw ANNSError.indexEmpty
-        }
+        let (vectors, graph, _) = try requireMutableState()
         guard !pendingRepairIDs.isEmpty else {
             return
         }
-        try triggerRepair()
+        try triggerRepair(vectors: vectors, graph: graph)
     }
 
-    private func triggerRepair(throwOnFailure: Bool = true) throws(ANNSError) {
-        guard let vectors, let graph else {
-            return
-        }
+    private func triggerRepair(
+        vectors: any VectorStorage,
+        graph: GraphBuffer,
+        throwOnFailure: Bool = true
+    ) throws(ANNSError) {
         guard !pendingRepairIDs.isEmpty else {
             return
         }
@@ -334,7 +315,7 @@ extension GraphIndex {
     }
 
     public func delete(id: String) throws {
-        guard !isReadOnlyLoadedIndex else {
+        if case .loaded = lifecycle {
             throw ANNSError.constructionFailed("Index is read-only (mmap-loaded)")
         }
         guard let internalID = idMap.internalID(for: id) else {
@@ -345,12 +326,7 @@ extension GraphIndex {
     }
 
     public func compact() async throws {
-        guard !isReadOnlyLoadedIndex else {
-            throw ANNSError.constructionFailed("Index is read-only (mmap-loaded)")
-        }
-        guard isBuilt, let vectors, let graph else {
-            throw ANNSError.indexEmpty
-        }
+        let (vectors, graph, _) = try requireMutableState()
         guard softDeletion.deletedCount > 0 else {
             return
         }
@@ -390,20 +366,22 @@ extension GraphIndex {
             remapping[oldID] = newID
         }
 
-        self.vectors = result.vectors
-        self.graph = result.graph
+        self.lifecycle = .ready(
+            ReadyState(
+                vectors: result.vectors,
+                graph: result.graph,
+                entryPoint: result.entryPoint
+            )
+        )
         self.idMap = result.idMap
-        self.entryPoint = result.entryPoint
         self.softDeletion = SoftDeletion()
         self.metadataStore = metadataStore.remapped(using: remapping)
-        self.isReadOnlyLoadedIndex = false
-        self.mmapLifetime = nil
         self.pendingRepairIDs.removeAll()
         self.hnsw = nil
     }
 
     public func setMetadata(_ column: String, value: String, for id: String) throws {
-        guard isBuilt else {
+        if case .empty = lifecycle {
             throw ANNSError.indexEmpty
         }
         guard let internalID = idMap.internalID(for: id) else {
@@ -413,7 +391,7 @@ extension GraphIndex {
     }
 
     public func setMetadata(_ column: String, value: Float, for id: String) throws {
-        guard isBuilt else {
+        if case .empty = lifecycle {
             throw ANNSError.indexEmpty
         }
         guard let internalID = idMap.internalID(for: id) else {
@@ -423,7 +401,7 @@ extension GraphIndex {
     }
 
     public func setMetadata(_ column: String, value: Int64, for id: String) throws {
-        guard isBuilt else {
+        if case .empty = lifecycle {
             throw ANNSError.indexEmpty
         }
         guard let internalID = idMap.internalID(for: id) else {
