@@ -145,19 +145,19 @@ struct BoundedPriorityBuffer<Element> {
 /// Fixed-capacity list kept sorted best-first under `outranks`.
 /// Insertion is O(log n) search + shift; equal-rank elements keep the
 /// most recently inserted ahead of earlier ones.
-struct BoundedSortedList<Element> {
+package struct BoundedSortedList<Element> {
     let capacity: Int
-    private(set) var elements: [Element] = []
-    private let outranks: (Element, Element) -> Bool
+    package private(set) var elements: [Element] = []
+    private let outranks: @Sendable (Element, Element) -> Bool
 
-    init(capacity: Int, outranks: @escaping (Element, Element) -> Bool) {
+    package init(capacity: Int, outranks: @escaping @Sendable (Element, Element) -> Bool) {
         self.capacity = max(0, capacity)
         self.outranks = outranks
     }
 
     var count: Int { elements.count }
 
-    mutating func insert(_ element: Element) {
+    package mutating func insert(_ element: Element) {
         guard capacity > 0 else {
             return
         }
@@ -172,7 +172,7 @@ struct BoundedSortedList<Element> {
         }
     }
 
-    mutating func insert(contentsOf newElements: [Element]) {
+    package mutating func insert(contentsOf newElements: [Element]) {
         for element in newElements {
             insert(element)
         }
@@ -194,3 +194,5 @@ struct BoundedSortedList<Element> {
         return low
     }
 }
+
+extension BoundedSortedList: Sendable where Element: Sendable {}

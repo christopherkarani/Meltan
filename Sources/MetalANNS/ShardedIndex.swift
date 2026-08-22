@@ -165,7 +165,9 @@ public actor _ShardedIndex {
             count: probeCount
         )
 
-        var mergedResults = TopResults(limit: k)
+        var mergedResults = BoundedSortedList<SearchResult>(capacity: k) {
+            $0.score < $1.score
+        }
 
         try await withThrowingTaskGroup(of: [SearchResult].self) { group in
             for shardIndex in probeIndices {
@@ -185,7 +187,7 @@ public actor _ShardedIndex {
             }
         }
 
-        return mergedResults.results
+        return mergedResults.elements
     }
 
     public func batchSearch(
@@ -275,7 +277,9 @@ public actor _ShardedIndex {
         // currently more stable for batched sharded recall.
         let perShardK = max(k, max(257, min(512, max(configuration.efSearch * 4, k * 16))))
 
-        var mergedResults = TopResults(limit: k)
+        var mergedResults = BoundedSortedList<SearchResult>(capacity: k) {
+            $0.score < $1.score
+        }
 
         try await withThrowingTaskGroup(of: [SearchResult].self) { group in
             for shardIndex in probeIndices {
@@ -295,7 +299,7 @@ public actor _ShardedIndex {
             }
         }
 
-        return mergedResults.results
+        return mergedResults.elements
     }
 
     public var count: Int {
@@ -368,53 +372,6 @@ public actor _ShardedIndex {
         while low < high {
             let mid = (low + high) / 2
             if list[mid].distance < distance {
-                low = mid + 1
-            } else {
-                high = mid
-            }
-        }
-
-        return low
-    }
-}
-
-private struct TopResults {
-    let limit: Int
-    private(set) var results: [SearchResult] = []
-
-    init(limit: Int) {
-        self.limit = max(0, limit)
-        self.results.reserveCapacity(self.limit)
-    }
-
-    mutating func insert(contentsOf newResults: [SearchResult]) {
-        guard limit > 0 else {
-            return
-        }
-        for result in newResults {
-            insert(result)
-        }
-    }
-
-    private mutating func insert(_ result: SearchResult) {
-        if results.count == limit, let worst = results.last, result.score >= worst.score {
-            return
-        }
-
-        let insertionIndex = lowerBound(of: result.score)
-        results.insert(result, at: insertionIndex)
-        if results.count > limit {
-            results.removeLast()
-        }
-    }
-
-    private func lowerBound(of score: Float) -> Int {
-        var low = 0
-        var high = results.count
-
-        while low < high {
-            let mid = (low + high) / 2
-            if results[mid].score < score {
                 low = mid + 1
             } else {
                 high = mid
