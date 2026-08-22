@@ -22,7 +22,7 @@ struct IVFPQGPUTests {
             let index = try Advanced.IVFPQIndex(capacity: 2_500, dimension: 128, config: config)
 
             guard await index.gpuAvailable() else {
-                return
+                throw ANNSError.deviceNotSupported
             }
 
             let centers = makeClusterCenters(dimension: 128, clusters: 32, seed: 201)
