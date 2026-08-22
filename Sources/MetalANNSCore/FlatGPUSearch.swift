@@ -230,6 +230,10 @@ public enum FlatGPUSearch {
         vectors.count <= (tierOverride ?? hostTierMaxVectorCount)
     }
 
+    /// Above this vector count a single-query GPU-tier selection fans out
+    /// across cores; below it the heap scan is cheaper than lane dispatch.
+    static let parallelSelectionMinVectorCount = 16384
+
     /// Clears cached host-tier corpus norms. Called by mutable storage on
     /// in-place writes so cached norms can never go stale.
     public static func invalidateHostNormCache(buffer: MTLBuffer) {
@@ -249,37 +253,49 @@ public enum FlatGPUSearch {
         let dim: Int
     }
 
-    // Synchronized via NSLock; small fixed-capacity LRU.
+    /// Immutable boxed norms array. Publication replaces the dictionary
+    /// reference atomically; in-flight readers retain their snapshot, so
+    /// scans and top-K selection run entirely without holding the cache
+    /// lock (holding it serialized every concurrent host-tier search).
+    private final class CachedCorpusNorms {
+        let pointer: UnsafeMutablePointer<Float>
+        let count: Int
+
+        init(count: Int) {
+            let capacity = max(count, 1)
+            self.pointer = UnsafeMutablePointer<Float>.allocate(capacity: capacity)
+            self.count = count
+        }
+
+        deinit {
+            if count > 0 {
+                pointer.deinitialize(count: count)
+            }
+            pointer.deallocate()
+        }
+    }
+
+    // Small fixed-capacity LRU synchronized via NSLock; the lock guards
+    // dictionary access only, never downstream computation.
     private final class CorpusNormCache: @unchecked Sendable {
         private let lock = NSLock()
-        private var entries: [CorpusNormKey: [Float]] = [:]
+        private var entries: [CorpusNormKey: CachedCorpusNorms] = [:]
         private var order: [CorpusNormKey] = []
         private let capacity = 16
 
-        func norms(for key: CorpusNormKey) -> [Float]? {
+        func get(_ key: CorpusNormKey) -> CachedCorpusNorms? {
             lock.lock()
             defer { lock.unlock() }
             return entries[key]
         }
 
-        func withNorms(for key: CorpusNormKey, _ body: (UnsafePointer<Float>) -> Void) -> Bool {
-            lock.lock()
-            defer { lock.unlock() }
-            guard let norms = entries[key], let base = norms.withUnsafeBufferPointer({ $0.baseAddress }) else {
-                return false
-            }
-            body(base)
-            return true
-        }
-
-        func store(_ norms: [Float], for key: CorpusNormKey) {
+        func store(_ norms: CachedCorpusNorms, for key: CorpusNormKey) {
             lock.lock()
             defer { lock.unlock() }
             if entries[key] == nil {
                 order.append(key)
                 while order.count > capacity {
-                    let evicted = order.removeFirst()
-                    entries[evicted] = nil
+                    entries[order.removeFirst()] = nil
                 }
             }
             entries[key] = norms
@@ -291,8 +307,8 @@ public enum FlatGPUSearch {
             let doomed = order.filter { $0.bufferID == bufferID }
             for key in doomed {
                 entries[key] = nil
-                order.removeAll { $0.bufferID == bufferID }
             }
+            order.removeAll { $0.bufferID == bufferID }
         }
 
         func clear() {
@@ -444,7 +460,8 @@ public enum FlatGPUSearch {
     }
 
     /// Row-wise squared norms of the corpus (cached per buffer+shape).
-    /// Streams the cached array through `body` without copying.
+    /// Streams the cached array through `body` without copying. The cache
+    /// lock is never held while `body` runs.
     private static func withCorpusSquaredNorms(
         corpus: UnsafePointer<Float>,
         vectorCount: Int,
@@ -452,7 +469,8 @@ public enum FlatGPUSearch {
         key: CorpusNormKey?,
         _ body: (UnsafePointer<Float>) -> Void
     ) {
-        if let key, normCache.withNorms(for: key, body) {
+        if let key, let cached = normCache.get(key), cached.count >= vectorCount {
+            body(UnsafePointer(cached.pointer))
             return
         }
 
@@ -485,12 +503,21 @@ public enum FlatGPUSearch {
             }
         }
 
-        if let key {
-            normCache.store(norms, for: key)
-            _ = normCache.withNorms(for: key, body)
-        } else {
+        guard let key else {
             norms.withUnsafeBufferPointer { body($0.baseAddress!) }
+            return
         }
+
+        let box = CachedCorpusNorms(count: vectorCount)
+        norms.withUnsafeBufferPointer { source in
+            box.pointer.initialize(from: source.baseAddress!, count: vectorCount)
+        }
+        normCache.store(box, for: key)
+        // Hand out whichever entry is canonical now (a racing writer may have
+        // published its own); every published box holds valid norms for the
+        // buffer state it was computed over.
+        let published = normCache.get(key) ?? box
+        body(UnsafePointer(published.pointer))
     }
 
     private static func hostScan(
@@ -671,7 +698,7 @@ public enum FlatGPUSearch {
             encoder.dispatchThreads(threadsPerGrid, threadsPerThreadgroup: threadsPerGroup)
         }
 
-        return selectTopKParallel(
+        return selectTopK(
             distances: workspace.distanceBuffer,
             queryCount: queries.count,
             vectorCount: vectorCount,
@@ -752,6 +779,9 @@ public enum FlatGPUSearch {
     }
 
     /// Bounded max-heap top-K over each query's distance row.
+    /// Batched queries select in parallel (rows are independent); a single
+    /// large scan is split into per-core chunks whose bounded heaps are then
+    /// merged deterministically by (distance, id).
     /// Cost ≈ vectorCount comparisons + O(K·ln(N/K)) replacements.
     private static func selectTopK(
         distances: MTLBuffer,
@@ -763,130 +793,208 @@ public enum FlatGPUSearch {
             to: Float.self,
             capacity: max(queryCount * vectorCount, 1)
         )
+        let concurrentBasePointer = ConcurrentReadPointer(pointer: UnsafePointer(basePointer))
+        let resultK = min(topK, vectorCount)
 
-        return (0..<queryCount).map { queryIndex in
-            let row = basePointer.advanced(by: queryIndex * vectorCount)
-            let resultK = min(topK, vectorCount)
+        var results = [[SearchResult]](repeating: [], count: queryCount)
 
-            var heapDistances = ContiguousArray<Float>()
-            var heapIDs = ContiguousArray<UInt32>()
-            heapDistances.reserveCapacity(resultK)
-            heapIDs.reserveCapacity(resultK)
-
-            @inline(__always) func siftDown(from index: Int) {
-                var position = index
-                let count = heapDistances.count
-                while true {
-                    let left = 2 * position + 1
-                    let right = left + 1
-                    var largest = position
-                    if left < count, heapDistances[left] > heapDistances[largest] {
-                        largest = left
-                    }
-                    if right < count, heapDistances[right] > heapDistances[largest] {
-                        largest = right
-                    }
-                    if largest == position {
-                        return
-                    }
-                    heapDistances.swapAt(position, largest)
-                    heapIDs.swapAt(position, largest)
-                    position = largest
+        if queryCount > 1 {
+            // Rows are independent; one lane per query. Writes target
+            // distinct slots through a unique buffer pointer (no COW race).
+            results.withUnsafeMutableBufferPointer { buffer in
+                let slot = ConcurrentSlotBuffer(buffer: buffer)
+                DispatchQueue.concurrentPerform(iterations: queryCount) { queryIndex in
+                    slot[queryIndex] = selectRow(
+                        concurrentBasePointer.advanced(by: queryIndex * vectorCount),
+                        count: vectorCount,
+                        resultK: resultK
+                    )
                 }
             }
+            return results
+        }
 
-            for rowIndex in 0..<vectorCount {
-                let value = row[rowIndex]
-                if heapDistances.count < resultK {
-                    heapDistances.append(value)
-                    heapIDs.append(UInt32(rowIndex))
-                    var position = heapDistances.count - 1
-                    while position > 0 {
-                        let parent = (position - 1) / 2
-                        if heapDistances[position] > heapDistances[parent] {
-                            heapDistances.swapAt(position, parent)
-                            heapIDs.swapAt(position, parent)
-                            position = parent
-                        } else {
-                            break
-                        }
-                    }
-                } else if value < heapDistances[0] {
-                    heapDistances[0] = value
-                    heapIDs[0] = UInt32(rowIndex)
-                    siftDown(from: 0)
-                }
+        let activeCores = ProcessInfo.processInfo.activeProcessorCount
+        if vectorCount >= parallelSelectionMinVectorCount && activeCores > 1 {
+            let lanes = min(activeCores, vectorCount / parallelSelectionMinVectorCount)
+            if lanes > 1 {
+                results[0] = selectRowParallel(
+                    concurrentBasePointer.pointer,
+                    count: vectorCount,
+                    resultK: resultK,
+                    lanes: lanes
+                )
+                return results
             }
+        }
 
-            // Extract ascending by repeatedly swapping the max to the end.
-            var count = heapDistances.count
-            while count > 1 {
-                heapDistances.swapAt(0, count - 1)
-                heapIDs.swapAt(0, count - 1)
-                count -= 1
-                var position = 0
-                while true {
-                    let left = 2 * position + 1
-                    let right = left + 1
-                    var largest = position
-                    if left < count, heapDistances[left] > heapDistances[largest] {
-                        largest = left
-                    }
-                    if right < count, heapDistances[right] > heapDistances[largest] {
-                        largest = right
-                    }
-                    if largest == position {
+        results[0] = selectRow(concurrentBasePointer.pointer, count: vectorCount, resultK: resultK)
+        return results
+    }
+
+    private struct CandidateEntry {
+        var distance: Float
+        var id: UInt32
+    }
+
+    /// Bounded max-heap top-K over `count` consecutive floats at `row`.
+    /// Candidate ids are `idBase + index`; chunked callers must pass their
+    /// chunk's start offset so ids stay global row indices.
+    /// Returns entries sorted ascending by (distance, id).
+    private static func boundedTopK(
+        _ row: UnsafePointer<Float>,
+        count: Int,
+        topK: Int,
+        idBase: UInt32 = 0
+    ) -> [CandidateEntry] {
+        guard count > 0, topK > 0 else { return [] }
+        var heapDistances = ContiguousArray<Float>()
+        var heapIDs = ContiguousArray<UInt32>()
+        heapDistances.reserveCapacity(topK)
+        heapIDs.reserveCapacity(topK)
+
+        @inline(__always) func siftDown(from index: Int, size: Int) {
+            var position = index
+            while true {
+                let left = 2 * position + 1
+                let right = left + 1
+                var largest = position
+                if left < size, heapDistances[left] > heapDistances[largest] {
+                    largest = left
+                }
+                if right < size, heapDistances[right] > heapDistances[largest] {
+                    largest = right
+                }
+                if largest == position {
+                    return
+                }
+                heapDistances.swapAt(position, largest)
+                heapIDs.swapAt(position, largest)
+                position = largest
+            }
+        }
+
+        for index in 0..<count {
+            let value = row[index]
+            if heapDistances.count < topK {
+                heapDistances.append(value)
+                heapIDs.append(UInt32(index) &+ idBase)
+                var position = heapDistances.count - 1
+                while position > 0 {
+                    let parent = (position - 1) / 2
+                    if heapDistances[position] > heapDistances[parent] {
+                        heapDistances.swapAt(position, parent)
+                        heapIDs.swapAt(position, parent)
+                        position = parent
+                    } else {
                         break
                     }
-                    heapDistances.swapAt(position, largest)
-                    heapIDs.swapAt(position, largest)
-                    position = largest
                 }
+            } else if value < heapDistances[0] {
+                heapDistances[0] = value
+                heapIDs[0] = UInt32(index) &+ idBase
+                siftDown(from: 0, size: topK)
             }
+        }
 
-            return (0..<resultK).map { slot in
-                SearchResult(
-                    id: "",
-                    score: heapDistances[slot],
-                    internalID: heapIDs[slot]
-                )
+        // Extract ascending by repeatedly swapping the max to the end.
+        var entries = [CandidateEntry]()
+        entries.reserveCapacity(min(topK, heapDistances.count))
+        var size = heapDistances.count
+        while size > 0 {
+            entries.append(CandidateEntry(distance: heapDistances[0], id: heapIDs[0]))
+            size -= 1
+            if size > 0 {
+                heapDistances[0] = heapDistances[size]
+                heapIDs[0] = heapIDs[size]
+                siftDown(from: 0, size: size)
             }
+        }
+        // Root-first extraction of a max-heap yields descending distances;
+        // flip to ascending (nearest-first) for output.
+        entries.reverse()
+
+        // Make ties deterministic (only pay the sort when duplicate
+        // distances actually exist).
+        var hasTies = false
+        if entries.count > 1 {
+            var index = 1
+            while index < entries.count {
+                if entries[index].distance == entries[index - 1].distance {
+                    hasTies = true
+                    break
+                }
+                index += 1
+            }
+        }
+        if hasTies {
+            entries.sort { $0.distance == $1.distance ? $0.id < $1.id : $0.distance < $1.distance }
+        }
+        return entries
+    }
+
+    private static func selectRow(
+        _ row: UnsafePointer<Float>,
+        count: Int,
+        resultK: Int
+    ) -> [SearchResult] {
+        boundedTopK(row, count: count, topK: resultK).map { entry in
+            SearchResult(id: "", score: entry.distance, internalID: entry.id)
         }
     }
 
-    /// Parallelizes the host-side top-K selection across queries after a GPU
-    /// chunk completes. The distance matrix layout is (query, row) so each
-    /// query's heap is independent.
-    private static func selectTopKParallel(
-        distances: MTLBuffer,
-        queryCount: Int,
-        vectorCount: Int,
-        topK: Int
-    ) -> [[SearchResult]] {
-        guard queryCount > 1 else {
-            return selectTopK(
-                distances: distances, queryCount: 1, vectorCount: vectorCount, topK: topK
-            )
+    /// Splits one long distance row into `lanes` chunks, selects per-chunk
+    /// top-K concurrently, then merges by (distance, id). Result ordering is
+    /// identical to the serial path up to tie order among equal distances.
+    private static func selectRowParallel(
+        _ row: UnsafePointer<Float>,
+        count: Int,
+        resultK: Int,
+        lanes: Int
+    ) -> [SearchResult] {
+        let chunkSize = count / lanes
+        let concurrentRow = ConcurrentReadPointer(pointer: row)
+        var laneEntries = [[CandidateEntry]](repeating: [], count: lanes)
+        laneEntries.withUnsafeMutableBufferPointer { buffer in
+            let slots = ConcurrentSlotBuffer(buffer: buffer)
+            DispatchQueue.concurrentPerform(iterations: lanes) { lane in
+                let start = lane * chunkSize
+                let end = lane == lanes - 1 ? count : start + chunkSize
+                slots[lane] = boundedTopK(
+                    concurrentRow.advanced(by: start),
+                    count: end - start,
+                    topK: resultK,
+                    idBase: UInt32(start)
+                )
+            }
         }
 
-        let storage = UnsafeMutableBufferPointer<[SearchResult]>.allocate(capacity: queryCount)
-        storage.initialize(repeating: [])
-        defer {
-            storage.deinitialize()
-            storage.deallocate()
+        var merged: [CandidateEntry] = laneEntries.flatMap { $0 }
+        merged.sort { $0.distance == $1.distance ? $0.id < $1.id : $0.distance < $1.distance }
+        return merged.prefix(resultK).map { entry in
+            SearchResult(id: "", score: entry.distance, internalID: entry.id)
         }
+    }
+}
 
-        let basePointer = distances.contents().bindMemory(
-            to: Float.self,
-            capacity: max(queryCount * vectorCount, 1)
-        )
-        let box = SelectTopKWork(
-            base: basePointer, vectorCount: vectorCount, topK: topK, results: storage
-        )
-        DispatchQueue.concurrentPerform(iterations: queryCount) { queryIndex in
-            box.run(queryIndex)
-        }
-        return Array(storage)
+/// Unchecked-Sendable read-only view over a pointer whose owner keeps the
+/// backing storage alive for the synchronous `concurrentPerform` scope.
+private struct ConcurrentReadPointer<Element>: @unchecked Sendable {
+    let pointer: UnsafePointer<Element>
+
+    func advanced(by offset: Int) -> UnsafePointer<Element> {
+        pointer.advanced(by: offset)
+    }
+}
+
+/// Unchecked-Sendable view over a uniquely-owned buffer so concurrent
+/// lanes can write distinct indices without tripping COW data races.
+private struct ConcurrentSlotBuffer<Element>: @unchecked Sendable {
+    let buffer: UnsafeMutableBufferPointer<Element>
+
+    subscript(_ index: Int) -> Element {
+        get { buffer[index] }
+        nonmutating set { buffer[index] = newValue }
     }
 }
 
@@ -923,115 +1031,6 @@ private final class HostBatchWork: @unchecked Sendable {
         } else {
             results[index] = FlatGPUSearch.hostSearch(
                 query: queries[index], vectors: vectors, k: k, metric: metric
-            )
-        }
-    }
-}
-
-/// Scoped sendable box for parallel GPU-result top-K selection.
-private final class SelectTopKWork: @unchecked Sendable {
-    private let base: UnsafePointer<Float>
-    private let vectorCount: Int
-    private let topK: Int
-    private let results: UnsafeMutableBufferPointer<[SearchResult]>
-
-    init(
-        base: UnsafePointer<Float>,
-        vectorCount: Int,
-        topK: Int,
-        results: UnsafeMutableBufferPointer<[SearchResult]>
-    ) {
-        self.base = base
-        self.vectorCount = vectorCount
-        self.topK = topK
-        self.results = results
-    }
-
-    func run(_ queryIndex: Int) {
-        let row = base.advanced(by: queryIndex * vectorCount)
-        let resultK = min(topK, vectorCount)
-
-        var heapDistances = ContiguousArray<Float>()
-        var heapIDs = ContiguousArray<UInt32>()
-        heapDistances.reserveCapacity(resultK)
-        heapIDs.reserveCapacity(resultK)
-
-        @inline(__always) func siftDown(from index: Int) {
-            var position = index
-            let count = heapDistances.count
-            while true {
-                let left = 2 * position + 1
-                let right = left + 1
-                var largest = position
-                if left < count, heapDistances[left] > heapDistances[largest] {
-                    largest = left
-                }
-                if right < count, heapDistances[right] > heapDistances[largest] {
-                    largest = right
-                }
-                if largest == position {
-                    return
-                }
-                heapDistances.swapAt(position, largest)
-                heapIDs.swapAt(position, largest)
-                position = largest
-            }
-        }
-
-        for rowIndex in 0..<vectorCount {
-            let value = row[rowIndex]
-            if heapDistances.count < resultK {
-                heapDistances.append(value)
-                heapIDs.append(UInt32(rowIndex))
-                var position = heapDistances.count - 1
-                while position > 0 {
-                    let parent = (position - 1) / 2
-                    if heapDistances[position] > heapDistances[parent] {
-                        heapDistances.swapAt(position, parent)
-                        heapIDs.swapAt(position, parent)
-                        position = parent
-                    } else {
-                        break
-                    }
-                }
-            } else if value < heapDistances[0] {
-                heapDistances[0] = value
-                heapIDs[0] = UInt32(rowIndex)
-                siftDown(from: 0)
-            }
-        }
-
-        // Extract ascending by repeatedly swapping the max to the end.
-        var count = heapDistances.count
-        while count > 1 {
-            heapDistances.swapAt(0, count - 1)
-            heapIDs.swapAt(0, count - 1)
-            count -= 1
-            var position = 0
-            while true {
-                let left = 2 * position + 1
-                let right = left + 1
-                var largest = position
-                if left < count, heapDistances[left] > heapDistances[largest] {
-                    largest = left
-                }
-                if right < count, heapDistances[right] > heapDistances[largest] {
-                    largest = right
-                }
-                if largest == position {
-                    break
-                }
-                heapDistances.swapAt(position, largest)
-                heapIDs.swapAt(position, largest)
-                position = largest
-            }
-        }
-
-        results[queryIndex] = (0..<resultK).map { slot in
-            SearchResult(
-                id: "",
-                score: heapDistances[slot],
-                internalID: heapIDs[slot]
             )
         }
     }
