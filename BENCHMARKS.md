@@ -1,6 +1,65 @@
 # MetalANNS Benchmarks
 
-Last updated: `2026-03-07`
+Last updated: `2026-08-22`
+
+## 2026-08 — Fused Exact Search (FlatGPUSearch)
+
+Vector search retrieval was re-plumbed around a fused exact top-K path that
+replaces per-graph-hop GPU dispatches (one command-buffer commit + sync per
+beam-search iteration) with either a single-dispatch Metal kernel or a host
+BLAS scan:
+
+- `flat_scan_distances` (`Sources/MetalANNSCore/Shaders/FlatSearch.metal`):
+  one thread per (query, row), float4 loads, no barriers; all metrics reduce
+  to `dot(q,v)` + `||v||²`.
+- Host tier (`FlatGPUSearch.hostSearch`): `cblas_sgemv` dot pass + cached
+  corpus norms + bounded max-heap top-K. Wins below ~32k vectors where a GPU
+  dispatch round trip costs more than the scan itself.
+- GPU tier: one command buffer for the whole scan, host-side selection.
+- Norm cache is invalidated on in-place storage writes (`VectorBuffer`
+  insert hooks), so results remain exact.
+- Gated by `IndexConfiguration.exactSearchMaxVectorCount` (0 disables).
+
+### Same-binary A/B (M3 Max, macOS 26.0, release, 200 queries, 3 runs)
+
+`--exact-search-limit 0` disables the fast path and restores legacy behavior,
+so both columns below come from the same binary.
+
+| Corpus | Baseline QPS | Baseline p50 | Exact QPS | Exact p50 | Speedup | Recall@10 |
+|---|---:|---:|---:|---:|---:|---|
+| 1k vectors   | 2,850  | 0.34 ms  | 24,928 | 0.029 ms | **8.7x**  | 1.000 |
+| 8k vectors   | 372    | 2.68 ms  | 11,795 | 0.075 ms | **31.7x** | 1.000 |
+| 16k vectors  | 184    | 5.43 ms  | 7,730  | 0.119 ms | **42.1x** | 1.000 |
+| 50k vectors  | 57     | 17.4 ms  | 2,216  | 0.441 ms | **38.5x** | 1.000 |
+| 200k vectors | 13.6   | 73.4 ms  | 1,042  | 0.947 ms | **76.6x** | 1.000 |
+
+Geometric-mean speedup across scales: **~32x**. The legacy graph path also
+loses recall at 200k vectors (recall@10 = 0.768, recall@100 = 0.792) while
+the exact path holds recall@k = 1.000 by construction.
+
+### Throughput under concurrency and batching (50k vectors, cosine)
+
+| Mode | QPS |
+|---|---:|
+| Legacy baseline, sequential | 57 |
+| Exact path, concurrency=8   | 11,521 |
+| Exact path, concurrency=16  | 12,752 |
+| `batchSearch`, 200 queries/dispatch | 7,136 |
+
+At 200k vectors the batched API sustains 1,547 QPS (~114x baseline).
+
+### Notes
+
+- Dispatch latency on this machine/environment carries a large fixed tax
+  (~200-350 us per command buffer under `powermode=Automatic`), which is why
+  the hybrid beam-search design collapsed as graphs deepened and why small
+  corpora are served from the host tier.
+- Full methodology, kernel-level profiling narrative, and charts:
+  `docs/performance-report.html`.
+
+## Historical Results
+
+Last updated before 2026-08: `2026-03-07`
 
 ## Environment
 
