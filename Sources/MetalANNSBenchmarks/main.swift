@@ -91,6 +91,9 @@ func makeBenchmarkConfig(
     if let exactSearchLimit = options.exactSearchLimit {
         config.exactSearchMaxVectorCount = exactSearchLimit
     }
+    if let dimension = options.dimension {
+        config.dim = max(1, dimension)
+    }
 
     return config
 }
@@ -275,6 +278,7 @@ struct ParsedBenchmarkOptions {
         case compare
         case ivfpq
         case ops
+        case probe
         case help
     }
 
@@ -285,6 +289,7 @@ struct ParsedBenchmarkOptions {
     var jsonOutPath: String?
     var queryCount: Int?
     var vectorCount: Int?
+    var dimension: Int?
     var seed: Int? = 42
     var repeatRuns: Int = 1
     var warmupRuns: Int = 0
@@ -307,6 +312,8 @@ struct ParsedBenchmarkOptions {
     var ivfpqNumCoarseCentroids: Int = 256
     var ivfpqNprobe: Int = 8
     var ivfpqTrainingIterations: Int = 10
+    var probeVectorCounts: [Int] = [10_000, 50_000, 100_000]
+    var probeDims: [Int] = [128, 384, 768]
 }
 
 func parseOptions(from args: [String]) throws -> ParsedBenchmarkOptions {
@@ -326,6 +333,9 @@ func parseOptions(from args: [String]) throws -> ParsedBenchmarkOptions {
 
         case "--ops":
             options.mode = .ops
+
+        case "--probe":
+            options.mode = .probe
 
         case "--insert-count":
             let value = try nextValue(for: arg, args: args, index: &index)
@@ -360,6 +370,9 @@ func parseOptions(from args: [String]) throws -> ParsedBenchmarkOptions {
                 throw BenchmarkDatasetError.invalidDataset("Invalid --vector-count value: \(value)")
             }
             options.vectorCount = parsed
+
+        case "--dimension", "--dim":
+            options.dimension = try parsePositiveInt(arg, try nextValue(for: arg, args: args, index: &index))
 
         case "--seed":
             let value = try nextValue(for: arg, args: args, index: &index)
@@ -530,6 +543,12 @@ do {
     switch options.mode {
     case .help:
         printUsage()
+        exit(0)
+
+    case .probe:
+        try await FlatSearchProbe.run(
+            vectorCounts: options.probeVectorCounts,
+            dims: options.probeDims)
         exit(0)
 
     case .single:
