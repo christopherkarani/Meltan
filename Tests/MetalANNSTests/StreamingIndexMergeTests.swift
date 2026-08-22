@@ -63,12 +63,17 @@ struct StreamingIndexMergeTests {
         }
 
         var sawMerging = false
-        for _ in 0..<400 {
+        // Cooperative polling: the merge sets/clears isMerging across several
+        // actor suspension points (index builds), so yielding between checks
+        // lets this loop observe the window without racing a wall-clock sleep
+        // against a merge that may finish in under one sleep on a loaded
+        // CI runner.
+        for _ in 0..<10_000 {
             if await index.isMerging {
                 sawMerging = true
                 break
             }
-            try await Task.sleep(nanoseconds: 2_000_000)
+            await Task.yield()
         }
 
         try await flushTask.value
