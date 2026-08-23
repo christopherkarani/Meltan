@@ -205,7 +205,7 @@ extension GraphIndex {
         self.metrics = metrics
     }
 
-    public func batchSearchMaxConcurrencyForTesting() async -> Int {
+    func batchSearchMaxConcurrencyForTesting() async -> Int {
         await batchSearchMaxConcurrency()
     }
 
