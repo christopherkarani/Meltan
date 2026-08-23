@@ -194,7 +194,9 @@ public actor _IVFPQIndex: Sendable {
 
         let probeCount = max(1, min(nprobe ?? config.nprobe, coarseCentroids.count))
         let centroidScores = selectClosestCentroids(to: query, limit: probeCount)
-        var merged = TopResults(limit: k)
+        var merged = BoundedSortedList<SearchResult>(capacity: k) {
+            $0.score < $1.score
+        }
 
         guard let pq else {
             return []
@@ -220,7 +222,7 @@ public actor _IVFPQIndex: Sendable {
             }
         }
 
-        return merged.results
+        return merged.elements
     }
 
     public var count: Int {
@@ -487,8 +489,9 @@ public actor _IVFPQIndex: Sendable {
             return []
         }
 
-        var closest: [(Int, Float)] = []
-        closest.reserveCapacity(min(limit, coarseCentroids.count))
+        var closest = BoundedSortedList<(Int, Float)>(capacity: min(limit, coarseCentroids.count)) {
+            $0.1 < $1.1
+        }
 
         vector.withUnsafeBufferPointer { vectorBuffer in
             flattenedCoarseCentroids.withUnsafeBufferPointer { centroidBuffer in
@@ -501,43 +504,11 @@ public actor _IVFPQIndex: Sendable {
                         dim: dimension,
                         metric: config.metric
                     )
-                    insertBounded((index, distance), into: &closest, limit: limit)
+                    closest.insert((index, distance))
                 }
             }
         }
-        return closest
-    }
-
-    private func insertBounded(
-        _ candidate: (Int, Float),
-        into results: inout [(Int, Float)],
-        limit: Int
-    ) {
-        if results.count == limit, let worst = results.last, candidate.1 >= worst.1 {
-            return
-        }
-
-        let insertionIndex = lowerBound(of: candidate.1, in: results)
-        results.insert(candidate, at: insertionIndex)
-        if results.count > limit {
-            results.removeLast()
-        }
-    }
-
-    private func lowerBound(of distance: Float, in list: [(Int, Float)]) -> Int {
-        var low = 0
-        var high = list.count
-
-        while low < high {
-            let mid = (low + high) / 2
-            if list[mid].1 < distance {
-                low = mid + 1
-            } else {
-                high = mid
-            }
-        }
-
-        return low
+        return closest.elements
     }
 
     private nonisolated static func nearestCoarseCentroid(
@@ -647,46 +618,5 @@ private final class ParallelAddPlanningState: @unchecked Sendable {
             firstError = error
         }
         lock.unlock()
-    }
-}
-
-private struct TopResults {
-    let limit: Int
-    private(set) var results: [SearchResult] = []
-
-    init(limit: Int) {
-        self.limit = max(0, limit)
-        results.reserveCapacity(self.limit)
-    }
-
-    mutating func insert(_ result: SearchResult) {
-        guard limit > 0 else {
-            return
-        }
-        if results.count == limit, let worst = results.last, result.score >= worst.score {
-            return
-        }
-
-        let insertionIndex = lowerBound(of: result.score)
-        results.insert(result, at: insertionIndex)
-        if results.count > limit {
-            results.removeLast()
-        }
-    }
-
-    private func lowerBound(of score: Float) -> Int {
-        var low = 0
-        var high = results.count
-
-        while low < high {
-            let mid = (low + high) / 2
-            if results[mid].score < score {
-                low = mid + 1
-            } else {
-                high = mid
-            }
-        }
-
-        return low
     }
 }

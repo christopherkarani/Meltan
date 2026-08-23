@@ -17,6 +17,11 @@ struct BinaryHeap<Element> {
         siftUp(from: storage.count - 1)
     }
 
+    /// Preallocates backing storage so pushes up to this count never reallocate.
+    mutating func reserveCapacity(_ capacity: Int) {
+        storage.reserveCapacity(capacity)
+    }
+
     @discardableResult
     mutating func pop() -> Element? {
         guard !storage.isEmpty else {
@@ -89,7 +94,9 @@ struct BoundedPriorityBuffer<Element> {
         self.capacity = max(0, capacity)
         self.outranks = outranks
         // Keep the worst element at the root so replacement is O(log k).
-        self.heap = BinaryHeap(sort: { lhs, rhs in outranks(rhs, lhs) })
+        var heap = BinaryHeap(sort: { lhs, rhs in outranks(rhs, lhs) })
+        heap.reserveCapacity(self.capacity)
+        self.heap = heap
     }
 
     var count: Int { heap.count }
@@ -116,4 +123,84 @@ struct BoundedPriorityBuffer<Element> {
     func sortedElements() -> [Element] {
         heap.unorderedElements().sorted(by: outranks)
     }
+
+    /// Best-first elements via in-place heapsort over the stored layout.
+    /// Deterministic for equal-rank elements; matches legacy bounded-heap
+    /// extraction order.
+    func heapsortedElements() -> [Element] {
+        var result = heap.unorderedElements()
+        var count = result.count
+        while count > 1 {
+            result.swapAt(0, count - 1)
+            count -= 1
+            var position = 0
+            while true {
+                let left = 2 * position + 1
+                let right = left + 1
+                var worst = position
+                if left < count, outranks(result[worst], result[left]) { worst = left }
+                if right < count, outranks(result[worst], result[right]) { worst = right }
+                if worst == position { break }
+                result.swapAt(position, worst)
+                position = worst
+            }
+        }
+        return result
+    }
 }
+
+/// Fixed-capacity list kept sorted best-first under `outranks`.
+/// Insertion is O(log n) search + shift; equal-rank elements keep the
+/// most recently inserted ahead of earlier ones.
+package struct BoundedSortedList<Element> {
+    let capacity: Int
+    package private(set) var elements: [Element] = []
+    private let outranks: @Sendable (Element, Element) -> Bool
+
+    package init(capacity: Int, outranks: @escaping @Sendable (Element, Element) -> Bool) {
+        self.capacity = max(0, capacity)
+        self.outranks = outranks
+        elements.reserveCapacity(self.capacity)
+    }
+
+    var count: Int { elements.count }
+
+    package mutating func insert(_ element: Element) {
+        guard capacity > 0 else {
+            return
+        }
+        if let worst = elements.last, elements.count >= capacity, !outranks(element, worst) {
+            return
+        }
+
+        let insertionIndex = lowerBound(of: element)
+        elements.insert(element, at: insertionIndex)
+        if elements.count > capacity {
+            elements.removeLast()
+        }
+    }
+
+    package mutating func insert(contentsOf newElements: [Element]) {
+        for element in newElements {
+            insert(element)
+        }
+    }
+
+    private func lowerBound(of element: Element) -> Int {
+        var low = 0
+        var high = elements.count
+
+        while low < high {
+            let mid = (low + high) / 2
+            if outranks(elements[mid], element) {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+
+        return low
+    }
+}
+
+extension BoundedSortedList: Sendable where Element: Sendable {}
