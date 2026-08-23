@@ -1,6 +1,6 @@
 import Foundation
 
-public enum GraphPruner {
+package enum GraphPruner {
     /// Prune redundant edges from the graph using path-based diversification.
     /// For each node, removes neighbors that are reachable via shorter paths
     /// through other neighbors.
@@ -8,7 +8,7 @@ public enum GraphPruner {
     /// FIXME: Major — candidates are iterated in adjacency-slot order, not sorted
     /// by distance. Since pruning is order-dependent, unsorted input may keep a
     /// farther neighbor and prune a closer one. Sort candidates by distance first.
-    public static func prune(
+    package static func prune(
         graph: GraphBuffer,
         vectors: any VectorStorage,
         nodeCount: Int,

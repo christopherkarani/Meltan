@@ -6,13 +6,13 @@ import Metal
 //
 //
 //
-public final class DiskBackedVectorBuffer: @unchecked Sendable {
-    public let buffer: MTLBuffer
-    public let dim: Int
-    public let capacity: Int
-    public private(set) var count: Int
-    public let isFloat16: Bool
-    public let isBinary: Bool
+package final class DiskBackedVectorBuffer: @unchecked Sendable {
+    package let buffer: MTLBuffer
+    package let dim: Int
+    package let capacity: Int
+    package private(set) var count: Int
+    package let isFloat16: Bool
+    package let isBinary: Bool
 
     private let mmapPointer: UnsafeRawPointer
     private let dataOffset: Int
@@ -23,7 +23,7 @@ public final class DiskBackedVectorBuffer: @unchecked Sendable {
     private var cacheOrder: [Int] = []
     private let cacheLock = NSLock()
 
-    public init(
+    package init(
         mmapPointer: UnsafeRawPointer,
         dataOffset: Int,
         dim: Int,
@@ -112,43 +112,43 @@ public final class DiskBackedVectorBuffer: @unchecked Sendable {
 }
 
 extension DiskBackedVectorBuffer: VectorStorage {
-    public func setCount(_ newCount: Int) {
+    package func setCount(_ newCount: Int) {
         _ = newCount
     }
 
-    public func insert(vector: [Float], at index: Int) throws {
+    package func insert(vector: [Float], at index: Int) throws {
         _ = vector
         _ = index
         throw ANNSError.constructionFailed("Disk-backed vectors are read-only")
     }
 
-    public func batchInsert(vectors: [[Float]], startingAt start: Int) throws {
+    package func batchInsert(vectors: [[Float]], startingAt start: Int) throws {
         _ = vectors
         _ = start
         throw ANNSError.constructionFailed("Disk-backed vectors are read-only")
     }
 
-    public func vector(at index: Int) -> [Float] {
+    package func vector(at index: Int) -> [Float] {
         precondition(index >= 0 && index < count, "Index out of bounds")
         return cachedVector(at: index)
     }
 }
 
-public enum DiskBackedIndexLoader {
+package enum DiskBackedIndexLoader {
     private static let headerMagic: [UInt8] = [0x4D, 0x41, 0x4E, 0x4E]  // "MANN"
     private static let mmapVersion: UInt32 = 3
     private static var pageSize: Int { max(1, Int(getpagesize())) }
 
-    public struct LoadResult {
-        public let vectors: DiskBackedVectorBuffer
-        public let graph: GraphBuffer
-        public let idMap: IDMap
-        public let entryPoint: UInt32
-        public let metric: Metric
-        public let isBinary: Bool
-        public let mmapLifetime: AnyObject
+    package struct LoadResult {
+        package let vectors: DiskBackedVectorBuffer
+        package let graph: GraphBuffer
+        package let idMap: IDMap
+        package let entryPoint: UInt32
+        package let metric: Metric
+        package let isBinary: Bool
+        package let mmapLifetime: AnyObject
 
-        public init(
+        package init(
             vectors: DiskBackedVectorBuffer,
             graph: GraphBuffer,
             idMap: IDMap,
@@ -167,7 +167,7 @@ public enum DiskBackedIndexLoader {
         }
     }
 
-    public static func load(from fileURL: URL, device: MTLDevice? = nil) throws -> LoadResult {
+    package static func load(from fileURL: URL, device: MTLDevice? = nil) throws -> LoadResult {
         let region = try DiskBackedMmapRegion(fileURL: fileURL)
 
         guard let metalDevice = device ?? MTLCreateSystemDefaultDevice() else {

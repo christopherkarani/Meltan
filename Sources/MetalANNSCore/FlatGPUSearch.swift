@@ -9,8 +9,8 @@ import simd
 /// graph hop) with ONE bandwidth-bound distance-scan kernel executed in a
 /// single command buffer, followed by host-side bounded-heap top-K selection.
 /// Results are exact: recall@k == 1.0 against brute force.
-public enum FlatGPUSearch {
-    public static let maxTopK = 256
+package enum FlatGPUSearch {
+    package static let maxTopK = 256
     static let tileRows = 2048
     static let minEligibleVectorCount = 64
     /// Upper bound on scratch bytes per dispatch chunk (~64 MiB).
@@ -28,7 +28,7 @@ public enum FlatGPUSearch {
 
     // MARK: - Public API
 
-    public static func search(
+    package static func search(
         context: MetalContext?,
         query: [Float],
         vectors: any VectorStorage,
@@ -100,7 +100,7 @@ public enum FlatGPUSearch {
     /// only pass storage with that layout (e.g. via `isEligible`). Storage with
     /// other layouts falls back to the correct host scan below
     /// `hostTierMaxVectorCount` and should not be routed here above it.
-    public static func batchSearch(
+    package static func batchSearch(
         context: MetalContext?,
         queries: [[Float]],
         vectors: any VectorStorage,
@@ -190,7 +190,7 @@ public enum FlatGPUSearch {
     /// file pages wrapped in a shared MTLBuffer — identical row layout).
     /// Binary-packed, Float16, and disk-backed staging windows are excluded
     /// structurally rather than by per-type flags.
-    public static func isEligible(
+    package static func isEligible(
         vectors: any VectorStorage,
         metric: Metric,
         k: Int,
@@ -236,11 +236,11 @@ public enum FlatGPUSearch {
 
     /// Clears cached host-tier corpus norms. Called by mutable storage on
     /// in-place writes so cached norms can never go stale.
-    public static func invalidateHostNormCache(buffer: MTLBuffer) {
+    package static func invalidateHostNormCache(buffer: MTLBuffer) {
         normCache.invalidate(bufferID: ObjectIdentifier(buffer))
     }
 
-    public static func invalidateHostNormCache() {
+    package static func invalidateHostNormCache() {
         normCache.clear()
     }
 
@@ -322,7 +322,7 @@ public enum FlatGPUSearch {
     /// Fused brute-force scan over the raw corpus pointer with a bounded
     /// max-heap top-K. Avoids any Metal dispatch overhead; used when the
     /// corpus is small enough that a GPU round trip would dominate.
-    public nonisolated static func hostSearch(
+    package nonisolated static func hostSearch(
         query: [Float],
         vectors: any VectorStorage,
         k: Int,

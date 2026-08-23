@@ -1,15 +1,15 @@
 import Foundation
 
-public final class PQVectorBuffer: QuantizedStorage, @unchecked Sendable {
-    public let originalDimension: Int
-    public private(set) var count: Int
-    public let capacity: Int
+package final class PQVectorBuffer: QuantizedStorage, @unchecked Sendable {
+    package let originalDimension: Int
+    package private(set) var count: Int
+    package let capacity: Int
 
     private let pq: ProductQuantizer
     private let codeLength: Int
     private var codes: [UInt8]
 
-    public init(capacity: Int, dim: Int, pq: ProductQuantizer) throws {
+    package init(capacity: Int, dim: Int, pq: ProductQuantizer) throws {
         guard capacity > 0 else {
             throw ANNSError.constructionFailed("PQVectorBuffer capacity must be greater than zero")
         }
@@ -26,12 +26,12 @@ public final class PQVectorBuffer: QuantizedStorage, @unchecked Sendable {
         self.codes = [UInt8](repeating: 0, count: capacity * pq.numSubspaces)
     }
 
-    public func insert(vector: [Float], at index: Int) throws {
+    package func insert(vector: [Float], at index: Int) throws {
         let encoded = try pq.encode(vector: vector)
         try insertEncoded(code: encoded, at: index)
     }
 
-    public func insertEncoded(code: [UInt8], at index: Int) throws {
+    package func insertEncoded(code: [UInt8], at index: Int) throws {
         guard index >= 0, index < capacity else {
             throw ANNSError.constructionFailed("Index \(index) out of bounds for capacity \(capacity)")
         }
@@ -50,7 +50,7 @@ public final class PQVectorBuffer: QuantizedStorage, @unchecked Sendable {
         }
     }
 
-    public func approximateDistance(query: [Float], to index: UInt32, metric: Metric) -> Float {
+    package func approximateDistance(query: [Float], to index: UInt32, metric: Metric) -> Float {
         guard query.count == originalDimension else {
             return Float.greatestFiniteMagnitude
         }
@@ -61,7 +61,7 @@ public final class PQVectorBuffer: QuantizedStorage, @unchecked Sendable {
         return pq.approximateDistance(query: query, codes: code(at: indexInt), metric: metric)
     }
 
-    public func reconstruct(at index: UInt32) -> [Float] {
+    package func reconstruct(at index: UInt32) -> [Float] {
         let indexInt = Int(index)
         guard indexInt >= 0, indexInt < count else {
             return []
@@ -73,7 +73,7 @@ public final class PQVectorBuffer: QuantizedStorage, @unchecked Sendable {
         }
     }
 
-    public func code(at index: Int) -> [UInt8] {
+    package func code(at index: Int) -> [UInt8] {
         guard index >= 0, index < count else {
             return []
         }
@@ -121,7 +121,7 @@ public final class PQVectorBuffer: QuantizedStorage, @unchecked Sendable {
         return flattened
     }
 
-    public var compressedCodeBytes: Int {
+    package var compressedCodeBytes: Int {
         count * codeLength
     }
 }

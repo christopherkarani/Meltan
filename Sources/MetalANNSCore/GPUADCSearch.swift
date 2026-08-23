@@ -1,11 +1,11 @@
 import Foundation
 import Metal
 
-public enum GPUADCSearch {
+package enum GPUADCSearch {
     private static let scanLoadStride = 32
     private static let workspacePool = ADCWorkspacePool()
 
-    public static func computeDistances(
+    package static func computeDistances(
         context: MetalContext,
         query: [Float],
         pq: ProductQuantizer,
@@ -32,7 +32,7 @@ public enum GPUADCSearch {
         )
     }
 
-    public static func computeDistances(
+    package static func computeDistances(
         context: MetalContext,
         query: [Float],
         pq: ProductQuantizer,
@@ -172,7 +172,7 @@ public enum GPUADCSearch {
         return Array(allDistances.prefix(originalVectorCount))
     }
 
-    public static func search(
+    package static func search(
         context: MetalContext,
         query: [Float],
         pq: ProductQuantizer,
@@ -191,7 +191,7 @@ public enum GPUADCSearch {
         return try rankDistances(distances: distances, ids: ids, k: k)
     }
 
-    public static func flattenCodebooks(from pq: ProductQuantizer) -> [Float] {
+    package static func flattenCodebooks(from pq: ProductQuantizer) -> [Float] {
         var flattened: [Float] = []
         flattened.reserveCapacity(
             pq.numSubspaces * pq.centroidsPerSubspace * pq.subspaceDimension

@@ -2,13 +2,13 @@ import Darwin
 import Foundation
 import Metal
 
-public enum IndexSerializer {
+package enum IndexSerializer {
     private static let headerMagic: [UInt8] = [0x4D, 0x41, 0x4E, 0x4E]  // "MANN"
     private static let version: UInt32 = 2
     private static let mmapVersion: UInt32 = 3
     private static var pageSize: Int { max(1, Int(getpagesize())) }
 
-    public static func save(
+    package static func save(
         vectors: any VectorStorage,
         graph: GraphBuffer,
         idMap: IDMap,
@@ -71,7 +71,7 @@ public enum IndexSerializer {
         try atomicWrite(filePayload, to: fileURL)
     }
 
-    public static func saveMmapCompatible(
+    package static func saveMmapCompatible(
         vectors: any VectorStorage,
         graph: GraphBuffer,
         idMap: IDMap,
@@ -139,7 +139,7 @@ public enum IndexSerializer {
         try atomicWrite(filePayload, to: fileURL)
     }
 
-    public static func load(from fileURL: URL, device: MTLDevice? = nil) throws -> (
+    package static func load(from fileURL: URL, device: MTLDevice? = nil) throws -> (
         vectors: any VectorStorage,
         graph: GraphBuffer,
         idMap: IDMap,

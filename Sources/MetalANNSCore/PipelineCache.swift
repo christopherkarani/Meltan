@@ -3,17 +3,17 @@ import os.log
 
 private let logger = Logger(subsystem: "com.metalanns", category: "PipelineCache")
 
-public actor PipelineCache {
+package actor PipelineCache {
     private let device: MTLDevice
     private let library: MTLLibrary
     private var cache: [String: MTLComputePipelineState] = [:]
 
-    public init(device: MTLDevice, library: MTLLibrary) {
+    package init(device: MTLDevice, library: MTLLibrary) {
         self.device = device
         self.library = library
     }
 
-    public func pipeline(for functionName: String) throws -> MTLComputePipelineState {
+    package func pipeline(for functionName: String) throws -> MTLComputePipelineState {
         if let cached = cache[functionName] {
             return cached
         }

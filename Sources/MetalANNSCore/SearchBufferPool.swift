@@ -7,18 +7,18 @@ import Metal
 //
 //
 //
-public final class SearchBufferPool: @unchecked Sendable {
-    public struct Buffers: @unchecked Sendable {
-        public let queryBuffer: MTLBuffer
-        public let outputDistanceBuffer: MTLBuffer
-        public let outputIDBuffer: MTLBuffer
-        public let queryDim: Int
-        public let maxK: Int
+package final class SearchBufferPool: @unchecked Sendable {
+    package struct Buffers: @unchecked Sendable {
+        package let queryBuffer: MTLBuffer
+        package let outputDistanceBuffer: MTLBuffer
+        package let outputIDBuffer: MTLBuffer
+        package let queryDim: Int
+        package let maxK: Int
     }
 
-    public struct VisitedBuffers: @unchecked Sendable {
-        public let buffer: MTLBuffer
-        public let generation: UInt32
+    package struct VisitedBuffers: @unchecked Sendable {
+        package let buffer: MTLBuffer
+        package let generation: UInt32
     }
 
     private let device: MTLDevice
@@ -30,7 +30,7 @@ public final class SearchBufferPool: @unchecked Sendable {
     private var generationCounter: UInt32 = 0
     private let lock = NSLock()
 
-    public init(
+    package init(
         device: MTLDevice,
         maxRetainedEntries: Int = 32,
         maxRetainedBytes: Int = 64 * 1024 * 1024
@@ -42,7 +42,7 @@ public final class SearchBufferPool: @unchecked Sendable {
 
     /// Returns a buffer set with capacity >= requested dimensions.
     /// If no pooled entry fits, allocates new buffers.
-    public func acquire(queryDim: Int, maxK: Int) throws -> Buffers {
+    package func acquire(queryDim: Int, maxK: Int) throws -> Buffers {
         lock.lock()
         defer { lock.unlock() }
 
@@ -58,7 +58,7 @@ public final class SearchBufferPool: @unchecked Sendable {
     }
 
     /// Returns buffers to the pool for future reuse.
-    public func release(_ buffers: Buffers) {
+    package func release(_ buffers: Buffers) {
         lock.lock()
         defer { lock.unlock() }
 
@@ -79,7 +79,7 @@ public final class SearchBufferPool: @unchecked Sendable {
     /// Acquires a visited-generation buffer sized for `nodeCount` nodes.
     /// Returns a pooled or newly allocated buffer and a unique non-zero generation value.
     /// Reused buffers are intentionally not zeroed; generations provide per-search isolation.
-    public func acquireVisited(nodeCount: Int) throws -> VisitedBuffers {
+    package func acquireVisited(nodeCount: Int) throws -> VisitedBuffers {
         lock.lock()
         defer { lock.unlock() }
 
@@ -103,7 +103,7 @@ public final class SearchBufferPool: @unchecked Sendable {
 
     /// Returns a visited-generation buffer to the pool.
     /// The provided capacity should match the node count used during acquire.
-    public func releaseVisited(_ buffer: MTLBuffer, capacity: Int) {
+    package func releaseVisited(_ buffer: MTLBuffer, capacity: Int) {
         lock.lock()
         defer { lock.unlock() }
         visitedAvailable.append((buffer: buffer, capacity: max(capacity, 1)))

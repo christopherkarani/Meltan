@@ -1,17 +1,17 @@
 import Foundation
 
 /// Skip layer in the HNSW hierarchy.
-public struct SkipLayer: Sendable, Codable {
+package struct SkipLayer: Sendable, Codable {
     /// Maps graph node ID -> layer-local node index.
-    public var nodeToLayerIndex: [UInt32: UInt32]
+    package var nodeToLayerIndex: [UInt32: UInt32]
 
     /// Maps layer-local index -> graph node ID.
-    public var layerIndexToNode: [UInt32]
+    package var layerIndexToNode: [UInt32]
 
     /// Layer adjacency lists indexed by layer-local index.
-    public var adjacency: [[UInt32]]
+    package var adjacency: [[UInt32]]
 
-    public init(
+    package init(
         nodeToLayerIndex: [UInt32: UInt32] = [:],
         layerIndexToNode: [UInt32] = [],
         adjacency: [[UInt32]] = []
@@ -23,20 +23,20 @@ public struct SkipLayer: Sendable, Codable {
 }
 
 /// Complete HNSW skip-layer structure. Layer 0 uses the base graph.
-public struct HNSWLayers: Sendable {
+package struct HNSWLayers: Sendable {
     /// Skip layers where `layers[0]` corresponds to layer 1.
-    public let layers: [SkipLayer]
+    package let layers: [SkipLayer]
 
     /// Maximum assigned layer in the hierarchy.
-    public let maxLayer: Int
+    package let maxLayer: Int
 
     /// Level multiplier (1 / ln(2)).
-    public let mL: Double
+    package let mL: Double
 
     /// Entry point in the highest populated layer.
-    public let entryPoint: UInt32
+    package let entryPoint: UInt32
 
-    public init(
+    package init(
         layers: [SkipLayer] = [],
         maxLayer: Int = 0,
         mL: Double = 1.4426950408889634,
@@ -49,7 +49,7 @@ public struct HNSWLayers: Sendable {
     }
 
     /// Returns neighbor node IDs for `nodeID` at a skip layer.
-    public func neighbors(of nodeID: UInt32, at layer: Int) -> [UInt32]? {
+    package func neighbors(of nodeID: UInt32, at layer: Int) -> [UInt32]? {
         guard layer > 0, layer <= maxLayer else {
             return nil
         }
