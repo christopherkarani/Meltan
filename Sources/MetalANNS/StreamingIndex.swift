@@ -778,7 +778,7 @@ public actor _StreamingIndex {
         let configuration = adjustedConfiguration(for: vectors.count)
         let index: GraphIndex
         if let sharedContext {
-            index = GraphIndex(configuration: configuration, context: sharedContext)
+            index = GraphIndex(configuration: configuration, exactContext: sharedContext)
         } else {
             index = GraphIndex(configuration: configuration)
             sharedContext = await index.context

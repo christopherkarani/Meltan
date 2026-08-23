@@ -17,7 +17,7 @@ struct BatchSearchAdaptiveConcurrencyTests {
 
             let index = GraphIndex(
                 configuration: IndexConfiguration(degree: 8, metric: .cosine),
-                context: context
+                exactContext: context
             )
 
             let maxConcurrency = await index.batchSearchMaxConcurrencyForTesting()
