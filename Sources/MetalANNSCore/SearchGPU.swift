@@ -7,7 +7,10 @@ package enum SearchGPU {
     // For ef=200 iterating 100+ times, pure dispatch overhead reaches 5–20 ms.
     // Should batch all neighbor distances into a single dispatch or use a fully
     // GPU-resident kernel.
-    private static let workspacePool = SearchGPUWorkspacePool()
+    private static let workspacePool = WorkspaceBufferPool<Workspace>(
+        maxRetainedEntries: 16,
+        entryBytes: { $0.neighborBuffer.length + $0.outputBuffer.length }
+    )
 
     private struct Candidate {
         let nodeID: UInt32
@@ -140,7 +143,7 @@ package enum SearchGPU {
 
         let neighborLength = neighborIDs.count * MemoryLayout<UInt32>.stride
         let outputLength = neighborIDs.count * MemoryLayout<Float>.stride
-        let workspace = try workspacePool.acquire(
+        let workspace = try acquireWorkspace(
             device: context.device,
             neighborBytes: neighborLength,
             outputBytes: outputLength
@@ -234,6 +237,23 @@ package enum SearchGPU {
         return low
     }
 
+    private static func acquireWorkspace(
+        device: MTLDevice,
+        neighborBytes: Int,
+        outputBytes: Int
+    ) throws -> Workspace {
+        let deviceID = ObjectIdentifier(device)
+        return try workspacePool.acquire(
+            where: {
+                $0.deviceID == deviceID && $0.neighborBuffer.length >= max(neighborBytes, 1)
+                    && $0.outputBuffer.length >= max(outputBytes, 1)
+            },
+            make: {
+                try Workspace.allocate(device: device, neighborBytes: neighborBytes, outputBytes: outputBytes)
+            }
+        )
+    }
+
     private static func copy<T>(_ source: [T], into buffer: MTLBuffer, byteCount: Int) {
         source.withUnsafeBytes { bytes in
             guard let baseAddress = bytes.baseAddress, byteCount > 0 else {
@@ -242,12 +262,9 @@ package enum SearchGPU {
             buffer.contents().copyMemory(from: baseAddress, byteCount: byteCount)
         }
     }
-}
 
-// Synchronized via NSLock; buffer pool is safe for concurrent acquire/release.
-private final class SearchGPUWorkspacePool: @unchecked Sendable {
     // Immutable after init; holds only MTLBuffer references.
-    final class Workspace: @unchecked Sendable {
+    private final class Workspace: @unchecked Sendable {
         let deviceID: ObjectIdentifier
         let neighborBuffer: MTLBuffer
         let outputBuffer: MTLBuffer
@@ -257,41 +274,24 @@ private final class SearchGPUWorkspacePool: @unchecked Sendable {
             self.neighborBuffer = neighborBuffer
             self.outputBuffer = outputBuffer
         }
-    }
 
-    private let lock = NSLock()
-    private var available: [Workspace] = []
+        static func allocate(
+            device: MTLDevice,
+            neighborBytes: Int,
+            outputBytes: Int
+        ) throws -> Workspace {
+            guard
+                let neighborBuffer = device.makeBuffer(length: max(neighborBytes, 1), options: .storageModeShared),
+                let outputBuffer = device.makeBuffer(length: max(outputBytes, 1), options: .storageModeShared)
+            else {
+                throw ANNSError.searchFailed("Failed to allocate SearchGPU workspace buffers")
+            }
 
-    func acquire(device: MTLDevice, neighborBytes: Int, outputBytes: Int) throws -> Workspace {
-        let deviceID = ObjectIdentifier(device)
-
-        lock.lock()
-        if let index = available.firstIndex(where: {
-            $0.deviceID == deviceID && $0.neighborBuffer.length >= max(neighborBytes, 1)
-                && $0.outputBuffer.length >= max(outputBytes, 1)
-        }) {
-            let workspace = available.remove(at: index)
-            lock.unlock()
-            return workspace
+            return Workspace(
+                deviceID: ObjectIdentifier(device),
+                neighborBuffer: neighborBuffer,
+                outputBuffer: outputBuffer
+            )
         }
-        lock.unlock()
-
-        guard
-            let neighborBuffer = device.makeBuffer(length: max(neighborBytes, 1), options: .storageModeShared),
-            let outputBuffer = device.makeBuffer(length: max(outputBytes, 1), options: .storageModeShared)
-        else {
-            throw ANNSError.searchFailed("Failed to allocate SearchGPU workspace buffers")
-        }
-
-        return Workspace(deviceID: deviceID, neighborBuffer: neighborBuffer, outputBuffer: outputBuffer)
-    }
-
-    func release(_ workspace: Workspace) {
-        lock.lock()
-        available.append(workspace)
-        if available.count > 16 {
-            available.removeFirst(available.count - 16)
-        }
-        lock.unlock()
     }
 }

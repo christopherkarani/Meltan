@@ -50,6 +50,32 @@ struct SearchBufferPoolTests {
         pool.release(b2)
     }
 
+    @Test func acquireFromPoolRestoresByteAccounting() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            print("Skipping: no Metal device")
+            return
+        }
+        let pool = SearchBufferPool(device: device)
+
+        let b1 = try pool.acquire(queryDim: 128, maxK: 10)
+        let entryBytes =
+            b1.queryBuffer.length
+            + b1.outputDistanceBuffer.length
+            + b1.outputIDBuffer.length
+        pool.release(b1)
+        #expect(pool.retainedBytesForTesting == entryBytes)
+        #expect(pool.availableCountForTesting == 1)
+
+        let b2 = try pool.acquire(queryDim: 128, maxK: 10)
+        #expect(b2.queryBuffer.gpuAddress == b1.queryBuffer.gpuAddress)
+        #expect(pool.retainedBytesForTesting == 0, "Pooled acquire must decrement retained bytes")
+        #expect(pool.availableCountForTesting == 0)
+
+        pool.release(b2)
+        #expect(pool.retainedBytesForTesting == entryBytes)
+        #expect(pool.availableCountForTesting == 1)
+    }
+
     @Test func releaseEvictsToEntryCap() throws {
         guard let device = MTLCreateSystemDefaultDevice() else {
             print("Skipping: no Metal device")

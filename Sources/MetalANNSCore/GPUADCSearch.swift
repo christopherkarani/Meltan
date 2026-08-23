@@ -3,7 +3,13 @@ import Metal
 
 package enum GPUADCSearch {
     private static let scanLoadStride = 32
-    private static let workspacePool = ADCWorkspacePool()
+    private static let workspacePool = WorkspaceBufferPool<Workspace>(
+        maxRetainedEntries: 8,
+        entryBytes: {
+            $0.queryBuffer.length + $0.codebookBuffer.length + $0.distanceTableBuffer.length
+                + $0.codesBuffer.length + $0.distancesBuffer.length
+        }
+    )
 
     package static func computeDistances(
         context: MetalContext,
@@ -92,7 +98,7 @@ package enum GPUADCSearch {
         let codebookLengthBytes = flattenedCodebooks.count * MemoryLayout<Float>.stride
         let codesLengthBytes = paddedVectorCount * m * MemoryLayout<UInt8>.stride
 
-        let workspace = try workspacePool.acquire(
+        let workspace = try acquireWorkspace(
             device: context.device,
             queryBytes: queryLengthBytes,
             codebookBytes: codebookLengthBytes,
@@ -242,10 +248,37 @@ package enum GPUADCSearch {
             buffer.contents().copyMemory(from: baseAddress, byteCount: byteCount)
         }
     }
-}
 
-private final class ADCWorkspacePool: @unchecked Sendable {
-    final class Workspace: @unchecked Sendable {
+    private static func acquireWorkspace(
+        device: MTLDevice,
+        queryBytes: Int,
+        codebookBytes: Int,
+        tableBytes: Int,
+        codesBytes: Int,
+        distancesBytes: Int
+    ) throws -> Workspace {
+        let deviceID = ObjectIdentifier(device)
+        return try workspacePool.acquire(
+            where: { workspace in
+                workspace.deviceID == deviceID && workspace.queryBuffer.length >= queryBytes
+                    && workspace.codebookBuffer.length >= codebookBytes
+                    && workspace.distanceTableBuffer.length >= tableBytes && workspace.codesBuffer.length >= codesBytes
+                    && workspace.distancesBuffer.length >= distancesBytes
+            },
+            make: {
+                try Workspace.allocate(
+                    device: device,
+                    queryBytes: queryBytes,
+                    codebookBytes: codebookBytes,
+                    tableBytes: tableBytes,
+                    codesBytes: codesBytes,
+                    distancesBytes: distancesBytes
+                )
+            }
+        )
+    }
+
+    private final class Workspace: @unchecked Sendable {
         let deviceID: ObjectIdentifier
         let queryBuffer: MTLBuffer
         let codebookBuffer: MTLBuffer
@@ -268,60 +301,33 @@ private final class ADCWorkspacePool: @unchecked Sendable {
             self.codesBuffer = codesBuffer
             self.distancesBuffer = distancesBuffer
         }
-    }
 
-    private let lock = NSLock()
-    private var available: [Workspace] = []
+        static func allocate(
+            device: MTLDevice,
+            queryBytes: Int,
+            codebookBytes: Int,
+            tableBytes: Int,
+            codesBytes: Int,
+            distancesBytes: Int
+        ) throws -> Workspace {
+            guard
+                let queryBuffer = device.makeBuffer(length: max(queryBytes, 1), options: .storageModeShared),
+                let codebookBuffer = device.makeBuffer(length: max(codebookBytes, 1), options: .storageModeShared),
+                let distanceTableBuffer = device.makeBuffer(length: max(tableBytes, 1), options: .storageModeShared),
+                let codesBuffer = device.makeBuffer(length: max(codesBytes, 1), options: .storageModeShared),
+                let distancesBuffer = device.makeBuffer(length: max(distancesBytes, 1), options: .storageModeShared)
+            else {
+                throw ANNSError.gpuResourceExhausted("Failed to allocate Metal buffers for GPU ADC")
+            }
 
-    func acquire(
-        device: MTLDevice,
-        queryBytes: Int,
-        codebookBytes: Int,
-        tableBytes: Int,
-        codesBytes: Int,
-        distancesBytes: Int
-    ) throws -> Workspace {
-        let deviceID = ObjectIdentifier(device)
-
-        lock.lock()
-        if let index = available.firstIndex(where: { workspace in
-            workspace.deviceID == deviceID && workspace.queryBuffer.length >= queryBytes
-                && workspace.codebookBuffer.length >= codebookBytes
-                && workspace.distanceTableBuffer.length >= tableBytes && workspace.codesBuffer.length >= codesBytes
-                && workspace.distancesBuffer.length >= distancesBytes
-        }) {
-            let workspace = available.remove(at: index)
-            lock.unlock()
-            return workspace
+            return Workspace(
+                deviceID: ObjectIdentifier(device),
+                queryBuffer: queryBuffer,
+                codebookBuffer: codebookBuffer,
+                distanceTableBuffer: distanceTableBuffer,
+                codesBuffer: codesBuffer,
+                distancesBuffer: distancesBuffer
+            )
         }
-        lock.unlock()
-
-        guard
-            let queryBuffer = device.makeBuffer(length: max(queryBytes, 1), options: .storageModeShared),
-            let codebookBuffer = device.makeBuffer(length: max(codebookBytes, 1), options: .storageModeShared),
-            let distanceTableBuffer = device.makeBuffer(length: max(tableBytes, 1), options: .storageModeShared),
-            let codesBuffer = device.makeBuffer(length: max(codesBytes, 1), options: .storageModeShared),
-            let distancesBuffer = device.makeBuffer(length: max(distancesBytes, 1), options: .storageModeShared)
-        else {
-            throw ANNSError.gpuResourceExhausted("Failed to allocate Metal buffers for GPU ADC")
-        }
-
-        return Workspace(
-            deviceID: deviceID,
-            queryBuffer: queryBuffer,
-            codebookBuffer: codebookBuffer,
-            distanceTableBuffer: distanceTableBuffer,
-            codesBuffer: codesBuffer,
-            distancesBuffer: distancesBuffer
-        )
-    }
-
-    func release(_ workspace: Workspace) {
-        lock.lock()
-        available.append(workspace)
-        if available.count > 8 {
-            available.removeFirst(available.count - 8)
-        }
-        lock.unlock()
     }
 }

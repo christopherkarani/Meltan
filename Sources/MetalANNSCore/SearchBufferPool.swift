@@ -3,10 +3,8 @@ import Metal
 
 /// Thread-safe pool of reusable MTLBuffer triplets for GPU search operations.
 /// Eliminates per-search allocation overhead in FullGPUSearch.
-// Thread-safety: All mutable operations and reads are synchronized via an internal NSLock.
-//
-//
-//
+// Thread-safety: buffer storage is delegated to the NSLock-guarded
+// WorkspaceBufferPool; the visited-generation counter is guarded by generationLock.
 package final class SearchBufferPool: @unchecked Sendable {
     package struct Buffers: @unchecked Sendable {
         package let queryBuffer: MTLBuffer
@@ -22,13 +20,10 @@ package final class SearchBufferPool: @unchecked Sendable {
     }
 
     private let device: MTLDevice
-    private let maxRetainedEntries: Int
-    private let maxRetainedBytes: Int
-    private var available: [Buffers] = []
-    private var visitedAvailable: [(buffer: MTLBuffer, capacity: Int)] = []
-    private var retainedBytes: Int = 0
+    private let bufferPool: WorkspaceBufferPool<Buffers>
+    private let visitedPool: WorkspaceBufferPool<(buffer: MTLBuffer, capacity: Int)>
+    private let generationLock = NSLock()
     private var generationCounter: UInt32 = 0
-    private let lock = NSLock()
 
     package init(
         device: MTLDevice,
@@ -36,103 +31,67 @@ package final class SearchBufferPool: @unchecked Sendable {
         maxRetainedBytes: Int = 64 * 1024 * 1024
     ) {
         self.device = device
-        self.maxRetainedEntries = max(0, maxRetainedEntries)
-        self.maxRetainedBytes = max(0, maxRetainedBytes)
+        self.bufferPool = WorkspaceBufferPool(
+            maxRetainedEntries: maxRetainedEntries,
+            maxRetainedBytes: maxRetainedBytes,
+            entryBytes: Self.entryBytes
+        )
+        self.visitedPool = WorkspaceBufferPool(
+            maxRetainedEntries: .max,
+            entryBytes: { $0.buffer.length }
+        )
     }
 
     /// Returns a buffer set with capacity >= requested dimensions.
     /// If no pooled entry fits, allocates new buffers.
     package func acquire(queryDim: Int, maxK: Int) throws -> Buffers {
-        lock.lock()
-        defer { lock.unlock() }
-
-        if let index = available.firstIndex(where: {
-            $0.queryDim >= queryDim && $0.maxK >= maxK
-        }) {
-            let buffers = available.remove(at: index)
-            retainedBytes -= Self.entryBytes(buffers)
-            return buffers
-        }
-
-        return try allocate(queryDim: queryDim, maxK: maxK)
+        try bufferPool.acquire(
+            where: { $0.queryDim >= queryDim && $0.maxK >= maxK },
+            make: { try Self.allocate(device: device, queryDim: queryDim, maxK: maxK) }
+        )
     }
 
     /// Returns buffers to the pool for future reuse.
     package func release(_ buffers: Buffers) {
-        lock.lock()
-        defer { lock.unlock() }
-
-        let bytes = Self.entryBytes(buffers)
-        guard
-            maxRetainedEntries > 0,
-            maxRetainedBytes > 0,
-            bytes <= maxRetainedBytes
-        else {
-            return
-        }
-
-        available.append(buffers)
-        retainedBytes += bytes
-        trimIfNeeded()
+        bufferPool.release(buffers)
     }
 
     /// Acquires a visited-generation buffer sized for `nodeCount` nodes.
     /// Returns a pooled or newly allocated buffer and a unique non-zero generation value.
     /// Reused buffers are intentionally not zeroed; generations provide per-search isolation.
     package func acquireVisited(nodeCount: Int) throws -> VisitedBuffers {
-        lock.lock()
-        defer { lock.unlock() }
-
-        generationCounter = generationCounter == UInt32.max ? 1 : generationCounter + 1
-        let generation = generationCounter
+        let generation = nextGeneration()
         let capacity = max(nodeCount, 1)
 
-        if let index = visitedAvailable.firstIndex(where: { $0.capacity >= capacity }) {
-            let entry = visitedAvailable.remove(at: index)
-            return VisitedBuffers(buffer: entry.buffer, generation: generation)
-        }
-
-        let length = max(capacity * MemoryLayout<UInt32>.stride, MemoryLayout<UInt32>.stride)
-        guard let buffer = device.makeBuffer(length: length, options: .storageModeShared) else {
-            throw ANNSError.searchFailed("Failed to allocate visited generation buffer")
-        }
-
-        buffer.contents().initializeMemory(as: UInt32.self, repeating: 0, count: capacity)
-        return VisitedBuffers(buffer: buffer, generation: generation)
+        let entry = try visitedPool.acquire(
+            where: { $0.capacity >= capacity },
+            make: { try Self.allocateVisited(device: device, capacity: capacity) }
+        )
+        return VisitedBuffers(buffer: entry.buffer, generation: generation)
     }
 
     /// Returns a visited-generation buffer to the pool.
     /// The provided capacity should match the node count used during acquire.
     package func releaseVisited(_ buffer: MTLBuffer, capacity: Int) {
-        lock.lock()
-        defer { lock.unlock() }
-        visitedAvailable.append((buffer: buffer, capacity: max(capacity, 1)))
+        visitedPool.release((buffer: buffer, capacity: max(capacity, 1)))
     }
 
     var availableCountForTesting: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return available.count
+        bufferPool.availableCountForTesting
     }
 
     var retainedBytesForTesting: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return retainedBytes
+        bufferPool.retainedBytesForTesting
     }
 
-    private func trimIfNeeded() {
-        while available.count > maxRetainedEntries || retainedBytes > maxRetainedBytes {
-            let removed = available.removeFirst()
-            retainedBytes -= Self.entryBytes(removed)
-        }
+    private func nextGeneration() -> UInt32 {
+        generationLock.lock()
+        defer { generationLock.unlock() }
+        generationCounter = generationCounter == UInt32.max ? 1 : generationCounter + 1
+        return generationCounter
     }
 
-    private static func entryBytes(_ buffers: Buffers) -> Int {
-        buffers.queryBuffer.length + buffers.outputDistanceBuffer.length + buffers.outputIDBuffer.length
-    }
-
-    private func allocate(queryDim: Int, maxK: Int) throws -> Buffers {
+    private static func allocate(device: MTLDevice, queryDim: Int, maxK: Int) throws -> Buffers {
         let floatSize = MemoryLayout<Float>.stride
         let uintSize = MemoryLayout<UInt32>.stride
 
@@ -151,5 +110,22 @@ package final class SearchBufferPool: @unchecked Sendable {
             queryDim: queryDim,
             maxK: maxK
         )
+    }
+
+    private static func allocateVisited(
+        device: MTLDevice,
+        capacity: Int
+    ) throws -> (buffer: MTLBuffer, capacity: Int) {
+        let length = max(capacity * MemoryLayout<UInt32>.stride, MemoryLayout<UInt32>.stride)
+        guard let buffer = device.makeBuffer(length: length, options: .storageModeShared) else {
+            throw ANNSError.searchFailed("Failed to allocate visited generation buffer")
+        }
+
+        buffer.contents().initializeMemory(as: UInt32.self, repeating: 0, count: capacity)
+        return (buffer: buffer, capacity: capacity)
+    }
+
+    private static func entryBytes(_ buffers: Buffers) -> Int {
+        buffers.queryBuffer.length + buffers.outputDistanceBuffer.length + buffers.outputIDBuffer.length
     }
 }
