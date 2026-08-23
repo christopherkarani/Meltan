@@ -5,19 +5,6 @@ import Testing
 
 @Suite("Search Tests")
 struct SearchTests {
-    private func withVectorBuffer<T>(
-        _ values: [Float],
-        _ body: (UnsafeBufferPointer<Float>) async throws -> T
-    ) async throws -> T {
-        let buffer = UnsafeMutableBufferPointer<Float>.allocate(capacity: values.count)
-        buffer.initialize(from: values)
-        defer {
-            buffer.deinitialize()
-            buffer.deallocate()
-        }
-        return try await body(UnsafeBufferPointer(buffer))
-    }
-
     @Test("CPU beam search returns k results")
     func cpuSearchReturnsK() async throws {
         let n = 100
@@ -67,8 +54,6 @@ struct SearchTests {
             maxIterations: 15
         )
 
-        let backend = AccelerateBackend()
-        let flat = vectors.flatMap { $0 }
         var totalRecall: Float = 0
 
         for _ in 0..<queryCount {
@@ -83,15 +68,7 @@ struct SearchTests {
                 metric: .cosine
             )
 
-            let exactDistances = try await withVectorBuffer(flat) { pointer in
-                try await backend.computeDistances(
-                    query: query,
-                    vectors: pointer,
-                    vectorCount: n,
-                    dim: dim,
-                    metric: .cosine
-                )
-            }
+            let exactDistances = vectors.map { SIMDDistance.distance($0, query, metric: .cosine) }
 
             let exactTopK = Set(
                 exactDistances.enumerated()

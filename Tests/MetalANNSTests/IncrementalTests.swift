@@ -131,8 +131,6 @@ struct IncrementalTests {
         ef: Int,
         metric: Metric
     ) async throws -> Float {
-        let backend = AccelerateBackend()
-        let flat = vectors.flatMap { $0 }
         var totalRecall: Float = 0
 
         for query in queries {
@@ -146,18 +144,9 @@ struct IncrementalTests {
                 metric: metric
             )
 
-            let exact = try await withVectorBuffer(flat) { pointer in
-                try await backend.computeDistances(
-                    query: query,
-                    vectors: pointer,
-                    vectorCount: vectors.count,
-                    dim: vectors[0].count,
-                    metric: metric
-                )
-            }
-
             let exactTopK = Set(
-                exact.enumerated()
+                vectors.enumerated()
+                    .map { (offset: $0.offset, element: SIMDDistance.distance($0.element, query, metric: metric)) }
                     .sorted { $0.element < $1.element }
                     .prefix(k)
                     .map { UInt32($0.offset) }
@@ -207,17 +196,4 @@ struct IncrementalTests {
             return Array(zip(ids, distances))
         }
     }
-}
-
-private func withVectorBuffer<T>(
-    _ values: [Float],
-    _ body: (UnsafeBufferPointer<Float>) async throws -> T
-) async throws -> T {
-    let buffer = UnsafeMutableBufferPointer<Float>.allocate(capacity: values.count)
-    buffer.initialize(from: values)
-    defer {
-        buffer.deinitialize()
-        buffer.deallocate()
-    }
-    return try await body(UnsafeBufferPointer(buffer))
 }

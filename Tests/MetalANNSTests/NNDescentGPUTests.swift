@@ -10,19 +10,6 @@ struct NNDescentGPUTests {
     private let localJoinDim = 2
     private let localJoinMaxReverse = 4
 
-    private func withVectorBuffer<T>(
-        _ values: [Float],
-        _ body: (UnsafeBufferPointer<Float>) async throws -> T
-    ) async throws -> T {
-        let buffer = UnsafeMutableBufferPointer<Float>.allocate(capacity: values.count)
-        _ = buffer.initialize(from: values)
-        defer {
-            buffer.deinitialize()
-            buffer.deallocate()
-        }
-        return try await body(UnsafeBufferPointer(buffer))
-    }
-
     private func makeLocalJoinGraph(context: MetalContext) throws -> GraphBuffer {
         let graph = try GraphBuffer(
             capacity: localJoinNodeCount,
@@ -202,20 +189,10 @@ struct NNDescentGPUTests {
             maxIterations: maxIterations
         )
 
-        let backend = AccelerateBackend()
-        let flat = vectors.flatMap { $0 }
         var totalRecall: Float = 0
 
         for node in 0..<nodeCount {
-            let distances = try await withVectorBuffer(flat) { pointer in
-                try await backend.computeDistances(
-                    query: vectors[node],
-                    vectors: pointer,
-                    vectorCount: nodeCount,
-                    dim: dim,
-                    metric: .cosine
-                )
-            }
+            let distances = vectors.map { SIMDDistance.distance($0, vectors[node], metric: .cosine) }
 
             let exactTopK = Set(
                 distances.enumerated()
