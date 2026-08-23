@@ -230,7 +230,81 @@ struct BatchExecutionTests {
         #expect(singleResult[0].contains(where: { $0.id == "v7" }))
     }
 
+    // MARK: - StreamingIndex.batchSearch adapter
+
+    @Test("StreamingIndex.batchSearch keeps every result correlated to its query index")
+    func streamingIndexBatchOrderingCorrelatesToQueryIndex() async throws {
+        let index = try await makeStreamingIndex()
+
+        let queries = makeVectors(count: 48, dim: 16, seedOffset: 0)
+        var sequential: [[SearchResult]] = []
+        sequential.reserveCapacity(queries.count)
+        for query in queries {
+            sequential.append(try await index.search(query: query, k: 5))
+        }
+
+        let results = try await index.batchSearch(queries: queries, k: 5)
+
+        #expect(results.count == queries.count)
+        for i in results.indices {
+            // Positional correlation: slot i must answer query i, never another.
+            #expect(Set(results[i].map(\.id)) == Set(sequential[i].map(\.id)))
+        }
+    }
+
+    @Test("StreamingIndex.batchSearch fails fast on an early failing query instead of masking it")
+    func streamingIndexBatchSearchFailsFastOnEarlyQuery() async throws {
+        let index = try await makeStreamingIndex()
+
+        var queries = makeVectors(count: 24, dim: 16, seedOffset: 300)
+        queries[1] = Array(repeating: 0, count: 15)
+
+        do {
+            _ = try await index.batchSearch(queries: queries, k: 5)
+            Issue.record("Expected the failing query to abort the whole batch")
+        } catch {
+            assertDimensionMismatch(error)
+        }
+    }
+
+    @Test("StreamingIndex.batchSearch handles empty and pending-only batches")
+    func streamingIndexBatchSearchEdges() async throws {
+        let fresh = Advanced.StreamingIndex()
+        #expect(try await fresh.batchSearch(queries: [], k: 5).isEmpty)
+
+        let pendingVector = makeVectors(count: 1, dim: 16, seedOffset: 500)[0]
+        try await fresh.insert(pendingVector, id: "v0")
+
+        let single = try await fresh.batchSearch(queries: [pendingVector], k: 5)
+        #expect(single.count == 1)
+        #expect(single[0].contains(where: { $0.id == "v0" }))
+    }
+
     // MARK: - Fixtures
+
+    private func makeStreamingIndex() async throws -> Advanced.StreamingIndex {
+        // Kept below the GPU construction/search thresholds so these tests
+        // exercise the fan-out contract without contending for Metal with the
+        // sibling suites running in parallel.
+        let index = Advanced.StreamingIndex(
+            config: StreamingConfiguration(
+                deltaCapacity: 48,
+                mergeStrategy: .blocking,
+                indexConfiguration: IndexConfiguration(degree: 8, metric: .cosine)
+            )
+        )
+        let baseVectors = makeVectors(count: 60, dim: 16, seedOffset: 0)
+        try await index.batchInsert(
+            baseVectors,
+            ids: (0..<baseVectors.count).map { "v\($0)" }
+        )
+        let deltaVectors = makeVectors(count: 40, dim: 16, seedOffset: 1000)
+        try await index.batchInsert(
+            deltaVectors,
+            ids: ((baseVectors.count)..<(baseVectors.count + deltaVectors.count)).map { "v\($0)" }
+        )
+        return index
+    }
 
     private func makeGraphIndex() async throws -> GraphIndex {
         let vectors = makeVectors(count: 600, dim: 16, seedOffset: 0)
