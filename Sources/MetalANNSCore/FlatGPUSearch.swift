@@ -18,8 +18,10 @@ package enum FlatGPUSearch {
 
     private static let emptyID: UInt32 = 0xFFFF_FFFF
 
-    private static let workspacePool = FlatWorkspacePool()
-    private static let pipelineStore = FlatPipelineStore()
+    private static let workspacePool = WorkspaceBufferPool<Workspace>(
+        maxRetainedEntries: 4,
+        entryBytes: { $0.queryBuffer.length + $0.normBuffer.length + $0.distanceBuffer.length }
+    )
 
     private struct Pair {
         var distance: Float
@@ -145,7 +147,7 @@ package enum FlatGPUSearch {
             )
         }
 
-        let scanPipeline = try pipeline(named: "flat_scan_distances", context: context)
+        let scanPipeline = try await context.pipelineCache.pipeline(for: "flat_scan_distances")
 
         let maxChunkQueries = max(
             1,
@@ -659,10 +661,9 @@ package enum FlatGPUSearch {
         topK: Int,
         metricType: UInt32
     ) async throws -> [[SearchResult]] {
-        let queryFloats = queries.count * dim
-        let workspace = try workspacePool.acquire(
+        let workspace = try acquireWorkspace(
             device: context.device,
-            queryFloats: queryFloats,
+            queryFloats: queries.count * dim,
             queryCount: queries.count,
             distanceFloats: queries.count * vectorCount
         )
@@ -708,11 +709,30 @@ package enum FlatGPUSearch {
 
     // MARK: - Host-side helpers
 
-    private static func pipeline(
-        named name: String,
-        context: MetalContext
-    ) throws -> MTLComputePipelineState {
-        try pipelineStore.pipeline(named: name, device: context.device, library: context.library)
+    private static func acquireWorkspace(
+        device: MTLDevice,
+        queryFloats: Int,
+        queryCount: Int,
+        distanceFloats: Int
+    ) throws -> Workspace {
+        let deviceID = ObjectIdentifier(device)
+        let queryBytes = max(queryFloats * MemoryLayout<Float>.stride, 4)
+        let normBytes = max(queryCount * MemoryLayout<Float>.stride, 4)
+        let distanceBytes = max(distanceFloats * MemoryLayout<Float>.stride, 4)
+        return try workspacePool.acquire(
+            where: {
+                $0.deviceID == deviceID && $0.queryBuffer.length >= queryBytes
+                    && $0.normBuffer.length >= normBytes && $0.distanceBuffer.length >= distanceBytes
+            },
+            make: {
+                try Workspace.allocate(
+                    device: device,
+                    queryBytes: queryBytes,
+                    normBytes: normBytes,
+                    distanceBytes: distanceBytes
+                )
+            }
+        )
     }
 
     private static func sanitizedThreadgroupSize(_ pipeline: MTLComputePipelineState) -> Int {
@@ -1036,82 +1056,30 @@ private final class HostBatchWork: @unchecked Sendable {
     }
 }
 
-// Synchronized via NSLock; safe for concurrent access across isolation domains.
-private final class FlatPipelineStore: @unchecked Sendable {
-    private let lock = NSLock()
-    private var pipelines: [ObjectIdentifier: [String: MTLComputePipelineState]] = [:]
+private final class Workspace: @unchecked Sendable {
+    let deviceID: ObjectIdentifier
+    let queryBuffer: MTLBuffer
+    let normBuffer: MTLBuffer
+    let distanceBuffer: MTLBuffer
 
-    func pipeline(
-        named name: String,
-        device: MTLDevice,
-        library: MTLLibrary
-    ) throws -> MTLComputePipelineState {
-        let deviceKey = ObjectIdentifier(device)
-        lock.lock()
-        if let cached = pipelines[deviceKey]?[name] {
-            lock.unlock()
-            return cached
-        }
-        lock.unlock()
-
-        guard let function = library.makeFunction(name: name) else {
-            throw ANNSError.gpuPipelineUnavailable("Metal function '\(name)' not found")
-        }
-        let state = try device.makeComputePipelineState(function: function)
-
-        lock.lock()
-        pipelines[deviceKey, default: [:]][name] = state
-        lock.unlock()
-        return state
-    }
-}
-
-// Synchronized via NSLock; safe for concurrent acquire/release.
-private final class FlatWorkspacePool: @unchecked Sendable {
-    final class Workspace: @unchecked Sendable {
-        let deviceID: ObjectIdentifier
-        let queryBuffer: MTLBuffer
-        let normBuffer: MTLBuffer
-        let distanceBuffer: MTLBuffer
-
-        init(
-            deviceID: ObjectIdentifier,
-            queryBuffer: MTLBuffer,
-            normBuffer: MTLBuffer,
-            distanceBuffer: MTLBuffer
-        ) {
-            self.deviceID = deviceID
-            self.queryBuffer = queryBuffer
-            self.normBuffer = normBuffer
-            self.distanceBuffer = distanceBuffer
-        }
+    init(
+        deviceID: ObjectIdentifier,
+        queryBuffer: MTLBuffer,
+        normBuffer: MTLBuffer,
+        distanceBuffer: MTLBuffer
+    ) {
+        self.deviceID = deviceID
+        self.queryBuffer = queryBuffer
+        self.normBuffer = normBuffer
+        self.distanceBuffer = distanceBuffer
     }
 
-    private let lock = NSLock()
-    private var available: [Workspace] = []
-
-    func acquire(
+    static func allocate(
         device: MTLDevice,
-        queryFloats: Int,
-        queryCount: Int,
-        distanceFloats: Int
+        queryBytes: Int,
+        normBytes: Int,
+        distanceBytes: Int
     ) throws -> Workspace {
-        let deviceID = ObjectIdentifier(device)
-        let queryBytes = max(queryFloats * MemoryLayout<Float>.stride, 4)
-        let normBytes = max(queryCount * MemoryLayout<Float>.stride, 4)
-        let distanceBytes = max(distanceFloats * MemoryLayout<Float>.stride, 4)
-
-        lock.lock()
-        if let index = available.firstIndex(where: {
-            $0.deviceID == deviceID && $0.queryBuffer.length >= queryBytes && $0.normBuffer.length >= normBytes
-                && $0.distanceBuffer.length >= distanceBytes
-        }) {
-            let workspace = available.remove(at: index)
-            lock.unlock()
-            return workspace
-        }
-        lock.unlock()
-
         guard
             let queryBuffer = device.makeBuffer(length: queryBytes, options: .storageModeShared),
             let normBuffer = device.makeBuffer(length: normBytes, options: .storageModeShared),
@@ -1121,19 +1089,10 @@ private final class FlatWorkspacePool: @unchecked Sendable {
         }
 
         return Workspace(
-            deviceID: deviceID,
+            deviceID: ObjectIdentifier(device),
             queryBuffer: queryBuffer,
             normBuffer: normBuffer,
             distanceBuffer: distanceBuffer
         )
-    }
-
-    func release(_ workspace: Workspace) {
-        lock.lock()
-        available.append(workspace)
-        if available.count > 4 {
-            available.removeFirst(available.count - 4)
-        }
-        lock.unlock()
     }
 }
