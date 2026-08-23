@@ -14,10 +14,6 @@ extension GraphIndex {
         context?.device
     }
 
-    internal func supportsGPUSearch(for vectors: any VectorStorage) -> Bool {
-        !(vectors is BinaryVectorBuffer)
-    }
-
     internal func shouldUseGPUConstruction(nodeCount: Int) -> Bool {
         guard context != nil else {
             return false
@@ -26,31 +22,6 @@ extension GraphIndex {
             return false
         }
         return nodeCount >= Self.minGPUConstructionNodeCount
-    }
-
-    internal func shouldUseHybridGPUSearch(
-        for vectors: any VectorStorage,
-        metric: Metric,
-        k: Int,
-        ef: Int
-    ) -> Bool {
-        guard supportsGPUSearch(for: vectors) else {
-            return false
-        }
-        guard metric != .hamming else {
-            return false
-        }
-        guard k <= Self.fullGPUMaxEF, ef <= Self.fullGPUMaxEF else {
-            return false
-        }
-
-        let nodeCount = vectors.count
-        guard nodeCount >= Self.minHybridGPUSearchNodeCount else {
-            return false
-        }
-
-        let estimatedDistanceWork = max(k, ef) * max(configuration.degree, 1)
-        return estimatedDistanceWork >= Self.minHybridGPUSearchWork
     }
 
     internal func applyLoadedState(
