@@ -66,6 +66,21 @@ struct IdentityKeyedLRUCacheTests {
         #expect(cache.get(Self.key(owner, 1))?.tag == 2)
     }
 
+    @Test("Replacing an existing key does not refresh its insertion position")
+    func replaceKeepsInsertionPosition() {
+        let cache = IdentityKeyedLRUCache<TestKey, Box>(capacity: 2)
+        let owner = NSObject()
+
+        cache.store(Box(tag: 1), for: Self.key(owner, 1))
+        cache.store(Box(tag: 2), for: Self.key(owner, 2))
+        cache.store(Box(tag: 9), for: Self.key(owner, 1))
+        cache.store(Box(tag: 3), for: Self.key(owner, 3))
+
+        #expect(cache.get(Self.key(owner, 1)) == nil)
+        #expect(cache.get(Self.key(owner, 2))?.tag == 2)
+        #expect(cache.get(Self.key(owner, 3))?.tag == 3)
+    }
+
     @Test("Invalidation drops every entry of one buffer and keeps the rest")
     func invalidateScopesToSingleBuffer() {
         let cache = IdentityKeyedLRUCache<TestKey, Box>(capacity: 8)
