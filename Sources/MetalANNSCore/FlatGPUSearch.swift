@@ -246,19 +246,18 @@ package enum FlatGPUSearch {
         normCache.clear()
     }
 
-    private static let normCache = CorpusNormCache()
+    private static let normCache = IdentityKeyedLRUCache<CorpusNormKey, CachedCorpusNorms>(capacity: 16)
 
-    private struct CorpusNormKey: Hashable {
+    private struct CorpusNormKey: BufferIdentityKeyed {
         let bufferID: ObjectIdentifier
         let bufferLength: Int
         let count: Int
         let dim: Int
     }
 
-    /// Immutable boxed norms array. Publication replaces the dictionary
-    /// reference atomically; in-flight readers retain their snapshot, so
-    /// scans and top-K selection run entirely without holding the cache
-    /// lock (holding it serialized every concurrent host-tier search).
+    /// Immutable boxed norms array handed out by reference so scans and
+    /// top-K selection run entirely without holding the cache lock; see
+    /// `IdentityKeyedLRUCache` for the publication semantics.
     private final class CachedCorpusNorms {
         let pointer: UnsafeMutablePointer<Float>
         let count: Int
@@ -274,50 +273,6 @@ package enum FlatGPUSearch {
                 pointer.deinitialize(count: count)
             }
             pointer.deallocate()
-        }
-    }
-
-    // Small fixed-capacity LRU synchronized via NSLock; the lock guards
-    // dictionary access only, never downstream computation.
-    private final class CorpusNormCache: @unchecked Sendable {
-        private let lock = NSLock()
-        private var entries: [CorpusNormKey: CachedCorpusNorms] = [:]
-        private var order: [CorpusNormKey] = []
-        private let capacity = 16
-
-        func get(_ key: CorpusNormKey) -> CachedCorpusNorms? {
-            lock.lock()
-            defer { lock.unlock() }
-            return entries[key]
-        }
-
-        func store(_ norms: CachedCorpusNorms, for key: CorpusNormKey) {
-            lock.lock()
-            defer { lock.unlock() }
-            if entries[key] == nil {
-                order.append(key)
-                while order.count > capacity {
-                    entries[order.removeFirst()] = nil
-                }
-            }
-            entries[key] = norms
-        }
-
-        func invalidate(bufferID: ObjectIdentifier) {
-            lock.lock()
-            defer { lock.unlock() }
-            let doomed = order.filter { $0.bufferID == bufferID }
-            for key in doomed {
-                entries[key] = nil
-            }
-            order.removeAll { $0.bufferID == bufferID }
-        }
-
-        func clear() {
-            lock.lock()
-            defer { lock.unlock() }
-            entries.removeAll()
-            order.removeAll()
         }
     }
 
