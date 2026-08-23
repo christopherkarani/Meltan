@@ -1,6 +1,6 @@
 import Foundation
 
-public struct HNSWConfiguration: Sendable, Codable {
+public struct HNSWConfiguration: Sendable, Codable, Equatable {
     /// Whether HNSW layers are enabled for CPU search.
     public var enabled: Bool
 

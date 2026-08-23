@@ -1,6 +1,6 @@
 import MetalANNSCore
 
-public struct IndexConfiguration: Sendable, Codable {
+public struct IndexConfiguration: Sendable, Codable, Equatable {
     /// Default ceiling (1M vectors) for the fused exact-search path.
     public static let defaultExactSearchMaxVectorCount = 1_000_000
 

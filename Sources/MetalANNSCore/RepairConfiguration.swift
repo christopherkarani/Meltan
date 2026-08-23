@@ -1,6 +1,6 @@
 import Foundation
 
-public struct RepairConfiguration: Sendable, Codable {
+public struct RepairConfiguration: Sendable, Codable, Equatable {
     /// Trigger repair every N inserts. Set to 0 to disable automatic repair.
     public var repairInterval: Int
 
