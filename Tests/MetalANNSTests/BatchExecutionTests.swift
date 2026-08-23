@@ -237,7 +237,7 @@ struct BatchExecutionTests {
         let ids = (0..<vectors.count).map { "v\($0)" }
         let index = GraphIndex(
             configuration: IndexConfiguration(degree: 8, metric: .cosine),
-            context: nil
+            exactContext: nil
         )
         try await index.build(vectors: vectors, ids: ids)
         return index

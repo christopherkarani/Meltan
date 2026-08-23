@@ -50,7 +50,7 @@ struct MultiQueuePerformanceTests {
             let queries = Array(vectors.prefix(200))
             let index = GraphIndex(
                 configuration: IndexConfiguration(degree: 8, metric: .cosine, efSearch: 96),
-                context: context
+                exactContext: context
             )
             try await index.build(vectors: vectors, ids: ids)
 

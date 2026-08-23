@@ -30,9 +30,9 @@ public actor GraphIndex {
     internal var hnsw: HNSWLayers?
     public var metrics: IndexMetrics? = nil
 
-    public init(configuration: IndexConfiguration = .default) {
+    public init(configuration: IndexConfiguration = .default, context: MetalContext? = nil) {
         self.configuration = configuration
-        self.context = try? MetalContext()
+        self.context = context ?? (try? MetalContext())
         self.vectors = nil
         self.graph = nil
         self.idMap = IDMap()
@@ -45,9 +45,9 @@ public actor GraphIndex {
         self.hnsw = nil
     }
 
-    init(configuration: IndexConfiguration = .default, context: MetalContext?) {
+    init(configuration: IndexConfiguration, exactContext: MetalContext?) {
         self.configuration = configuration
-        self.context = context
+        self.context = exactContext
         self.vectors = nil
         self.graph = nil
         self.idMap = IDMap()

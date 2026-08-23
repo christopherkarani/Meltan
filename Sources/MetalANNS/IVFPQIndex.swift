@@ -34,7 +34,7 @@ public actor _IVFPQIndex: Sendable {
     private var idMap = IDMap()
     private var isTrained = false
 
-    public init(capacity: Int, dimension: Int, config: IVFPQConfiguration) throws {
+    public init(capacity: Int, dimension: Int, config: IVFPQConfiguration, context: MetalContext? = nil) throws {
         guard capacity > 0 else {
             throw ANNSError.constructionFailed("_IVFPQIndex capacity must be greater than zero")
         }
@@ -48,7 +48,7 @@ public actor _IVFPQIndex: Sendable {
         self.capacity = capacity
         self.dimension = dimension
         self.config = config
-        self.context = try? MetalContext()
+        self.context = context ?? (try? MetalContext())
     }
 
     public func train(vectors: [[Float]]) async throws {

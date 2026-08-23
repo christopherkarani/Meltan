@@ -30,7 +30,7 @@ struct BatchSearchAdaptiveConcurrencyTests {
     func cpuModeUsesProcessorCount() async throws {
         let index = GraphIndex(
             configuration: IndexConfiguration(degree: 8, metric: .cosine),
-            context: nil
+            exactContext: nil
         )
 
         let maxConcurrency = await index.batchSearchMaxConcurrencyForTesting()
@@ -44,7 +44,7 @@ struct BatchSearchAdaptiveConcurrencyTests {
         let queries = Array(vectors.prefix(100))
         let index = GraphIndex(
             configuration: IndexConfiguration(degree: 8, metric: .cosine),
-            context: nil
+            exactContext: nil
         )
         try await index.build(vectors: vectors, ids: ids)
 
