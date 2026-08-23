@@ -203,48 +203,11 @@ public actor _ShardedIndex {
             return []
         }
 
-        let maxConcurrency = max(1, ProcessInfo.processInfo.activeProcessorCount)
-        return try await withThrowingTaskGroup(of: (Int, [SearchResult]).self) { group in
-            var orderedResults = [[SearchResult]?](repeating: nil, count: queries.count)
-            var nextIndex = 0
-
-            for _ in 0..<min(maxConcurrency, queries.count) {
-                let idx = nextIndex
-                let query = queries[idx]
-                nextIndex += 1
-
-                group.addTask { [self] in
-                    let result = try await self.searchForBatch(
-                        query: query,
-                        k: k,
-                        filter: filter,
-                        metric: metric
-                    )
-                    return (idx, result)
-                }
-            }
-
-            for try await (idx, results) in group {
-                orderedResults[idx] = results
-
-                if nextIndex < queries.count {
-                    let idx = nextIndex
-                    let query = queries[idx]
-                    nextIndex += 1
-
-                    group.addTask { [self] in
-                        let result = try await self.searchForBatch(
-                            query: query,
-                            k: k,
-                            filter: filter,
-                            metric: metric
-                        )
-                        return (idx, result)
-                    }
-                }
-            }
-
-            return orderedResults.map { $0 ?? [] }
+        return try await BatchExecution.run(
+            over: queries,
+            maxConcurrency: ProcessInfo.processInfo.activeProcessorCount
+        ) { [self] query in
+            try await searchForBatch(query: query, k: k, filter: filter, metric: metric)
         }
     }
 
@@ -332,52 +295,15 @@ public actor _ShardedIndex {
             return []
         }
 
-        var best: [(index: Int, distance: Float)] = []
-        best.reserveCapacity(min(count, centroids.count))
+        var best = BoundedSortedList<(index: Int, distance: Float)>(capacity: count) {
+            $0.distance < $1.distance
+        }
 
         for (index, centroid) in centroids.enumerated() {
             let distance = SIMDDistance.distance(query, centroid, metric: metric)
-            insertBounded((index, distance), into: &best, limit: count)
+            best.insert((index, distance))
         }
 
-        return best.map(\.index)
-    }
-
-    private func insertBounded(
-        _ candidate: (index: Int, distance: Float),
-        into list: inout [(index: Int, distance: Float)],
-        limit: Int
-    ) {
-        if limit <= 0 {
-            return
-        }
-        if list.count == limit, let worst = list.last, candidate.distance >= worst.distance {
-            return
-        }
-
-        let insertionIndex = lowerBound(of: candidate.distance, in: list)
-        list.insert(candidate, at: insertionIndex)
-        if list.count > limit {
-            list.removeLast()
-        }
-    }
-
-    private func lowerBound(
-        of distance: Float,
-        in list: [(index: Int, distance: Float)]
-    ) -> Int {
-        var low = 0
-        var high = list.count
-
-        while low < high {
-            let mid = (low + high) / 2
-            if list[mid].distance < distance {
-                low = mid + 1
-            } else {
-                high = mid
-            }
-        }
-
-        return low
+        return best.elements.map(\.index)
     }
 }
