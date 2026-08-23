@@ -45,9 +45,9 @@ public actor GraphIndex {
         self.hnsw = nil
     }
 
-    init(configuration: IndexConfiguration = .default, context: MetalContext?) {
+    init(configuration: IndexConfiguration, exactContext: MetalContext?) {
         self.configuration = configuration
-        self.context = context
+        self.context = exactContext
         self.vectors = nil
         self.graph = nil
         self.idMap = IDMap()

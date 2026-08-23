@@ -78,6 +78,7 @@ public actor _StreamingIndex {
 
     private var base: GraphIndex?
     private var delta: GraphIndex?
+    private var sharedContext: MetalContext?
     private var mergeTask: Task<Void, Error>?
     private var lastBackgroundMergeError: (any Error)?
     private var _isMerging = false
@@ -220,20 +221,24 @@ public actor _StreamingIndex {
             return []
         }
 
-        return try await withThrowingTaskGroup(of: (Int, [SearchResult]).self) { group in
-            for (index, query) in queries.enumerated() {
-                group.addTask { [self] in
-                    let results = try await self.search(query: query, k: k, filter: filter, metric: metric)
-                    return (index, results)
-                }
-            }
+        let maxConcurrency = await batchSearchMaxConcurrency()
 
-            var ordered = [[SearchResult]?](repeating: nil, count: queries.count)
-            for try await (index, results) in group {
-                ordered[index] = results
-            }
-            return ordered.map { $0 ?? [] }
+        return try await BatchExecution.run(
+            over: queries,
+            maxConcurrency: maxConcurrency
+        ) { [self] query in
+            try await search(query: query, k: k, filter: filter, metric: metric)
         }
+    }
+
+    private func batchSearchMaxConcurrency() async -> Int {
+        if let base {
+            return await base.batchSearchMaxConcurrency()
+        }
+        if let delta {
+            return await delta.batchSearchMaxConcurrency()
+        }
+        return max(1, ProcessInfo.processInfo.activeProcessorCount)
     }
 
     public func rangeSearch(
@@ -553,6 +558,7 @@ public actor _StreamingIndex {
         try Self.validateLoadedState(meta, knownIDs: knownIDs)
 
         self.base = base
+        self.sharedContext = await base.context
         self.delta = nil
         self.mergeTask = nil
         self._isMerging = false
@@ -769,7 +775,14 @@ public actor _StreamingIndex {
     }
 
     private func buildIndex(vectors: [[Float]], ids: [String]) async throws -> GraphIndex {
-        let index = GraphIndex(configuration: adjustedConfiguration(for: vectors.count))
+        let configuration = adjustedConfiguration(for: vectors.count)
+        let index: GraphIndex
+        if let sharedContext {
+            index = GraphIndex(configuration: configuration, exactContext: sharedContext)
+        } else {
+            index = GraphIndex(configuration: configuration)
+            sharedContext = await index.context
+        }
         try await index.build(vectors: vectors, ids: ids)
         if let metrics {
             await index.setMetrics(metrics)

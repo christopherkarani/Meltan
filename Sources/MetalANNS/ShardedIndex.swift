@@ -115,7 +115,7 @@ public actor _ShardedIndex {
                 group.addTask {
                     let shard = GraphIndex(
                         configuration: shardConfiguration,
-                        context: sharedContext
+                        exactContext: sharedContext
                     )
                     try await shard.build(vectors: shardData, ids: shardDataIDs)
                     return (shardIndex, shard)
