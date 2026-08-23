@@ -41,6 +41,7 @@ package final class WorkspaceBufferPool<Entry>: @unchecked Sendable {
         lock.lock()
         if let index = available.firstIndex(where: fits) {
             let entry = available.remove(at: index)
+            retainedBytes -= entryBytes(entry)
             lock.unlock()
             return entry
         }
