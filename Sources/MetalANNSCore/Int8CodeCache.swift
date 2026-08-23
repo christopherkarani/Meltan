@@ -107,61 +107,17 @@ final class Int8CodeBuffer: @unchecked Sendable {
     }
 }
 
-/// Cache of `Int8CodeBuffer`s keyed by backing MTL buffer identity + shape,
-/// mirroring `FlatGPUSearch.CorpusNormCache` semantics: explicitly invalidated
-/// on in-place storage writes, LRU-evicted beyond capacity.
+/// Cache of `Int8CodeBuffer`s keyed by backing MTL buffer identity + shape:
+/// explicitly invalidated on in-place storage writes, evicted beyond capacity.
 enum Int8CodeCache {
-    struct Key: Hashable {
+    struct Key: BufferIdentityKeyed {
         let bufferID: ObjectIdentifier
         let bufferLength: Int
         let count: Int
         let dim: Int
     }
 
-    private final class Store: @unchecked Sendable {
-        private let lock = NSLock()
-        private var entries: [Key: Int8CodeBuffer] = [:]
-        private var order: [Key] = []
-        private let capacity = 8
-
-        func get(_ key: Key) -> Int8CodeBuffer? {
-            lock.lock()
-            defer { lock.unlock() }
-            return entries[key]
-        }
-
-        func store(_ value: Int8CodeBuffer, for key: Key) {
-            lock.lock()
-            defer { lock.unlock() }
-            if entries[key] == nil {
-                order.append(key)
-                while order.count > capacity {
-                    let evicted = order.removeFirst()
-                    entries[evicted] = nil
-                }
-            }
-            entries[key] = value
-        }
-
-        func invalidate(bufferID: ObjectIdentifier) {
-            lock.lock()
-            defer { lock.unlock() }
-            let doomed = order.filter { $0.bufferID == bufferID }
-            for key in doomed {
-                entries[key] = nil
-            }
-            order.removeAll { $0.bufferID == bufferID }
-        }
-
-        func clear() {
-            lock.lock()
-            defer { lock.unlock() }
-            entries.removeAll()
-            order.removeAll()
-        }
-    }
-
-    private static let store = Store()
+    private static let store = IdentityKeyedLRUCache<Key, Int8CodeBuffer>(capacity: 8)
 
     static func codes(
         for buffer: MTLBuffer,
