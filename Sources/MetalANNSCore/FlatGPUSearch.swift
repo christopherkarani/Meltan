@@ -1055,7 +1055,7 @@ private final class FlatPipelineStore: @unchecked Sendable {
         lock.unlock()
 
         guard let function = library.makeFunction(name: name) else {
-            throw ANNSError.constructionFailed("Metal function '\(name)' not found")
+            throw ANNSError.gpuPipelineUnavailable("Metal function '\(name)' not found")
         }
         let state = try device.makeComputePipelineState(function: function)
 

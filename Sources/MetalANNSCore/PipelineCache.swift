@@ -19,7 +19,7 @@ public actor PipelineCache {
         }
 
         guard let function = library.makeFunction(name: functionName) else {
-            throw ANNSError.constructionFailed("Metal function '\(functionName)' not found")
+            throw ANNSError.gpuPipelineUnavailable("Metal function '\(functionName)' not found")
         }
 
         let pipeline = try device.makeComputePipelineState(function: function)

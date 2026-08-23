@@ -131,7 +131,7 @@ public enum GPUADCSearch {
 
         try await context.execute { commandBuffer in
             guard let tableEncoder = commandBuffer.makeComputeCommandEncoder() else {
-                throw ANNSError.constructionFailed("Failed to create distance-table encoder")
+                throw ANNSError.gpuPipelineUnavailable("Failed to create distance-table encoder")
             }
 
             tableEncoder.setComputePipelineState(tablePipeline)
@@ -148,7 +148,7 @@ public enum GPUADCSearch {
             tableEncoder.endEncoding()
 
             guard let scanEncoder = commandBuffer.makeComputeCommandEncoder() else {
-                throw ANNSError.constructionFailed("Failed to create ADC scan encoder")
+                throw ANNSError.gpuPipelineUnavailable("Failed to create ADC scan encoder")
             }
 
             scanEncoder.setComputePipelineState(scanPipeline)
@@ -303,7 +303,7 @@ private final class ADCWorkspacePool: @unchecked Sendable {
             let codesBuffer = device.makeBuffer(length: max(codesBytes, 1), options: .storageModeShared),
             let distancesBuffer = device.makeBuffer(length: max(distancesBytes, 1), options: .storageModeShared)
         else {
-            throw ANNSError.constructionFailed("Failed to allocate Metal buffers for GPU ADC")
+            throw ANNSError.gpuResourceExhausted("Failed to allocate Metal buffers for GPU ADC")
         }
 
         return Workspace(

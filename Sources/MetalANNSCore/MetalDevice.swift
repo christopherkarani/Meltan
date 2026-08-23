@@ -83,14 +83,14 @@ public final class MetalContext: @unchecked Sendable {
 
     public func execute(_ encode: (MTLCommandBuffer) throws -> Void) async throws {
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
-            throw ANNSError.constructionFailed("Failed to create command buffer")
+            throw ANNSError.gpuResourceExhausted("Failed to create command buffer")
         }
         try encode(commandBuffer)
         commandBuffer.commit()
         await commandBuffer.completed()
 
         if let error = commandBuffer.error {
-            throw ANNSError.constructionFailed("Command buffer failed: \(error)")
+            throw ANNSError.gpuExecutionFailed("Command buffer failed: \(error)")
         }
     }
 
@@ -98,14 +98,14 @@ public final class MetalContext: @unchecked Sendable {
     public func executeOnPool(_ encode: (MTLCommandBuffer) throws -> Void) async throws {
         let queue = await queuePool.next()
         guard let commandBuffer = queue.makeCommandBuffer() else {
-            throw ANNSError.constructionFailed("Failed to create command buffer from pool queue")
+            throw ANNSError.gpuResourceExhausted("Failed to create command buffer from pool queue")
         }
         try encode(commandBuffer)
         commandBuffer.commit()
         await commandBuffer.completed()
 
         if let error = commandBuffer.error {
-            throw ANNSError.constructionFailed("Command buffer failed: \(error.localizedDescription)")
+            throw ANNSError.gpuExecutionFailed("Command buffer failed: \(error.localizedDescription)")
         }
     }
 }
