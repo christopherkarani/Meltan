@@ -47,55 +47,6 @@ void mans_f32_dot_rows(const float *corpus,
     }
 }
 
-void mans_i8_dot_rows(const int8_t *codes,
-                      const int8_t *queryCodes,
-                      int64_t rowCount,
-                      int64_t dim,
-                      int32_t *out) {
-    int64_t r = 0;
-#if defined(MANS_NEON)
-    for (; r < rowCount; ++r) {
-        const int8_t *row = codes + r * dim;
-        int32x4_t acc0 = vdupq_n_s32(0);
-        int32x4_t acc1 = vdupq_n_s32(0);
-        int32x4_t acc2 = vdupq_n_s32(0);
-        int32x4_t acc3 = vdupq_n_s32(0);
-        int64_t d = 0;
-        for (; d + 32 <= dim; d += 32) {
-            int8x16_t c0 = vld1q_s8(row + d);
-            int8x16_t c1 = vld1q_s8(row + d + 16);
-            int8x16_t q0 = vld1q_s8(queryCodes + d);
-            int8x16_t q1 = vld1q_s8(queryCodes + d + 16);
-            acc0 = vpadalq_s16(acc0, vmull_s8(vget_low_s8(c0), vget_low_s8(q0)));
-            acc1 = vpadalq_s16(acc1, vmull_s8(vget_high_s8(c0), vget_high_s8(q0)));
-            acc2 = vpadalq_s16(acc2, vmull_s8(vget_low_s8(c1), vget_low_s8(q1)));
-            acc3 = vpadalq_s16(acc3, vmull_s8(vget_high_s8(c1), vget_high_s8(q1)));
-        }
-        for (; d + 16 <= dim; d += 16) {
-            int8x16_t c = vld1q_s8(row + d);
-            int8x16_t q = vld1q_s8(queryCodes + d);
-            acc0 = vpadalq_s16(acc0, vmull_s8(vget_low_s8(c), vget_low_s8(q)));
-            acc1 = vpadalq_s16(acc1, vmull_s8(vget_high_s8(c), vget_high_s8(q)));
-        }
-        acc0 = vaddq_s32(acc0, vaddq_s32(acc1, vaddq_s32(acc2, acc3)));
-        int32_t sum = vaddvq_s32(acc0);
-        for (; d < dim; ++d) {
-            sum += (int32_t)row[d] * (int32_t)queryCodes[d];
-        }
-        out[r] = sum;
-    }
-#else
-    for (; r < rowCount; ++r) {
-        const int8_t *row = codes + r * dim;
-        int32_t sum = 0;
-        for (int64_t d = 0; d < dim; ++d) {
-            sum += (int32_t)row[d] * (int32_t)queryCodes[d];
-        }
-        out[r] = sum;
-    }
-#endif
-}
-
 void mans_i8_dot_rows_f32(const int8_t *codes,
                           const int8_t *queryCodes,
                           int64_t rowCount,
@@ -134,47 +85,6 @@ void mans_i8_dot_rows_f32(const int8_t *codes,
         }
         out[r] = (float)total;
     }
-}
-
-void mans_i8_abs_row_sums(const int8_t *codes,
-                          int64_t rowCount,
-                          int64_t dim,
-                          int32_t *absSum) {
-    int64_t r = 0;
-#if defined(MANS_NEON)
-    for (; r < rowCount; ++r) {
-        const int8_t *row = codes + r * dim;
-        uint16x8_t a0 = vdupq_n_u16(0);
-        uint16x8_t a1 = vdupq_n_u16(0);
-        int64_t d = 0;
-        for (; d + 32 <= dim; d += 32) {
-            uint8x16_t au0 = vreinterpretq_u8_s8(vabsq_s8(vld1q_s8(row + d)));
-            uint8x16_t au1 = vreinterpretq_u8_s8(vabsq_s8(vld1q_s8(row + d + 16)));
-            a0 = vpadalq_u8(a0, au0);
-            a1 = vpadalq_u8(a1, au1);
-        }
-        for (; d + 16 <= dim; d += 16) {
-            uint8x16_t au = vreinterpretq_u8_s8(vabsq_s8(vld1q_s8(row + d)));
-            a0 = vpadalq_u8(a0, au);
-        }
-        uint16x8_t a = vaddq_u16(a0, a1);
-        uint32x4_t w = vpaddlq_u16(a);
-        int32_t sum = (int32_t)vaddvq_u32(w);
-        for (; d < dim; ++d) {
-            sum += row[d] < 0 ? -(int32_t)row[d] : (int32_t)row[d];
-        }
-        absSum[r] = sum;
-    }
-#else
-    for (; r < rowCount; ++r) {
-        const int8_t *row = codes + r * dim;
-        int32_t sum = 0;
-        for (int64_t d = 0; d < dim; ++d) {
-            sum += row[d] < 0 ? -(int32_t)row[d] : (int32_t)row[d];
-        }
-        absSum[r] = sum;
-    }
-#endif
 }
 
 void mans_f32_dot_rows_gather(const float *corpus,

@@ -141,7 +141,15 @@ enum BoundedExactScan {
         let slices = context.slices
         let chunkSize = context.chunkSize
         let perSliceBudget = min(budget, chunkSize)
-        var sliceResults = [[HeapEntry]](repeating: [], count: slices)
+
+        // Manual storage so worker closures can write disjoint slots without
+        // concurrent Swift Array mutation (same pattern as ParallelFlatScan).
+        let resultsStorage = UnsafeMutableBufferPointer<[HeapEntry]>.allocate(capacity: slices)
+        resultsStorage.initialize(repeating: [])
+        defer {
+            resultsStorage.deinitialize()
+            resultsStorage.deallocate()
+        }
 
         let dotsScratch = UnsafeMutablePointer<Float>.allocate(capacity: slices * chunkSize)
         defer { dotsScratch.deallocate() }
@@ -219,9 +227,11 @@ enum BoundedExactScan {
                 break
             }
 
-            sliceResults[slice] = heapSortedAscending(heap)
+            resultsStorage[slice] = heapSortedAscending(heap)
         }
 
+        var sliceResults = [[HeapEntry]](repeating: [], count: slices)
+        for index in 0..<slices { sliceResults[index] = resultsStorage[index] }
         return mergeAscending(sliceResults, budget: budget)
     }
 

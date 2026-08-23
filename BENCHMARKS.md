@@ -11,8 +11,7 @@ brute-force-exact (recall@k = 1.0 by construction, fuzz-verified).
 ### What changed
 
 1. **`MetalANNSC` (new C target)** — NEON kernels: `mans_f32_dot_rows`,
-   `mans_i8_dot_rows(_f32)`, `mans_i8_abs_row_sums`,
-   `mans_f32_dot_rows_gather`.
+   `mans_i8_dot_rows_f32`, `mans_f32_dot_rows_gather`.
 2. **`ParallelFlatScan`** — multithreaded sliced fp32 scan with per-slice
    bounded heaps + k-way merge; replaces the serial `cblas_sgemv` +
    single-threaded heap in `FlatGPUSearch.hostSearch`. Each slice returns its
