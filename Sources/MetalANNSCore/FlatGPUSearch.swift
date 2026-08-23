@@ -36,12 +36,50 @@ public enum FlatGPUSearch {
         metric: Metric,
         tierOverride: Int? = nil
     ) async throws -> [SearchResult] {
-        if shouldUseHostPath(vectors: vectors, k: k, tierOverride: tierOverride) {
+        // An explicit tier override pins legacy behavior exactly (regression
+        // tests rely on this): <=override runs the fp32 host scan, anything
+        // larger dispatches the GPU kernel. The int8 tier is bypassed.
+        if let tierOverride {
+            if shouldUseHostPath(vectors: vectors, k: k, tierOverride: tierOverride) {
+                return hostSearch(query: query, vectors: vectors, k: k, metric: metric)
+            }
+            guard let context else {
+                return hostSearch(query: query, vectors: vectors, k: k, metric: metric)
+            }
+            let batches = try await batchSearch(
+                context: context,
+                queries: [query],
+                vectors: vectors,
+                k: k,
+                metric: metric,
+                tierOverride: tierOverride
+            )
+            guard let first = batches.first else {
+                throw ANNSError.searchFailed("FlatGPUSearch produced no results")
+            }
+            return first
+        }
+
+        // Default routing.
+        // Tier 1: exact int8-bounded prefilter scan for mid-size corpora —
+        // reads a quarter of the fp32 bytes while provably preserving the
+        // true top-k. Wins roughly in the 16k–45k band where the fp32 host
+        // scan is bandwidth-bound but the GPU dispatch tax still dominates.
+        let vectorCountForTiering = vectors.count
+        if vectorCountForTiering >= BoundedExactScan.minVectorCount,
+            vectorCountForTiering <= gpuTierMinVectorCount,
+            let bounded = boundedExactSearch(
+                query: query, vectors: vectors, k: k, metric: metric
+            )
+        {
+            return bounded
+        }
+        // Tier 2: parallel fp32 host scan below the dispatch-tax crossover.
+        if shouldUseHostPath(vectors: vectors, k: k, tierOverride: nil) || context == nil {
             return hostSearch(query: query, vectors: vectors, k: k, metric: metric)
         }
-        guard let context else {
-            return hostSearch(query: query, vectors: vectors, k: k, metric: metric)
-        }
+        // Tier 3: single-dispatch GPU flat scan (bandwidth-bound corpora).
+        guard let context else { throw ANNSError.searchFailed("unreachable") }
         let batches = try await batchSearch(
             context: context,
             queries: [query],
@@ -87,7 +125,9 @@ public enum FlatGPUSearch {
         }
 
         if shouldUseHostPath(vectors: vectors, k: k, tierOverride: tierOverride) || context == nil {
-            return queries.map { hostSearch(query: $0, vectors: vectors, k: k, metric: metric) }
+            return parallelHostBatchSearch(
+                queries: queries, vectors: vectors, k: k, metric: metric
+            )
         }
 
         let effectiveK = min(k, maxTopK, vectorCount)
@@ -100,7 +140,9 @@ public enum FlatGPUSearch {
             }
 
         guard let context else {
-            return queries.map { hostSearch(query: $0, vectors: vectors, k: k, metric: metric) }
+            return parallelHostBatchSearch(
+                queries: queries, vectors: vectors, k: k, metric: metric
+            )
         }
 
         let scanPipeline = try pipeline(named: "flat_scan_distances", context: context)
@@ -172,6 +214,13 @@ public enum FlatGPUSearch {
     /// host scan streams at ~60-90 GB/s single-core while the GPU flat path
     /// pays a fixed submission tax then reads at ~150-200 GB/s.
     static let hostTierMaxVectorCount = 32768
+
+    /// Above this count the GPU flat scan beats the CPU int8 prefilter tier:
+    /// GPU streaming bandwidth overtakes the CPU's DRAM throughput once the
+    /// dispatch tax is amortized over a large kernel. Measured crossover on
+    /// M3 Max (dim 384): int8 ~319us vs GPU ~420us at 32k; int8 ~900us vs
+    /// GPU ~550us at 50k.
+    static let gpuTierMinVectorCount = 40960
 
     private static func shouldUseHostPath(
         vectors: any VectorStorage,
@@ -273,7 +322,7 @@ public enum FlatGPUSearch {
     /// Fused brute-force scan over the raw corpus pointer with a bounded
     /// max-heap top-K. Avoids any Metal dispatch overhead; used when the
     /// corpus is small enough that a GPU round trip would dominate.
-    nonisolated static func hostSearch(
+    public nonisolated static func hostSearch(
         query: [Float],
         vectors: any VectorStorage,
         k: Int,
@@ -330,28 +379,84 @@ public enum FlatGPUSearch {
         }
     }
 
-    /// Row-wise dot products of every corpus row against `query` via BLAS.
-    private static func corpusDotProducts(
-        corpus: UnsafePointer<Float>,
-        query: UnsafePointer<Float>,
-        vectorCount: Int,
-        dim: Int,
-        output: UnsafeMutablePointer<Float>
-    ) {
-        cblas_sgemv(
-            CblasRowMajor,
-            CblasNoTrans,
-            Int32(vectorCount),
-            Int32(dim),
-            1.0,
-            corpus,
-            Int32(dim),
-            query,
-            1,
-            0.0,
-            output,
-            1
+    /// Exact scan accelerated by the int8 bounded prefilter.
+    ///
+    /// Returns nil whenever the tier does not apply (storage ineligible,
+    /// corpus below threshold) so callers fall back to the plain fp32
+    /// parallel scan. Results are brute-force-exact on all paths.
+    static func boundedExactSearch(
+        query: [Float],
+        vectors: any VectorStorage,
+        k: Int,
+        metric: Metric
+    ) -> [SearchResult]? {
+        guard let vectorBuffer = vectors as? VectorBuffer,
+            !vectors.isFloat16,
+            let corpus = vectorBuffer.floatPointer.baseAddress
+        else { return nil }
+        let vectorCount = vectors.count
+        let dim = vectors.dim
+        guard vectorCount >= BoundedExactScan.minVectorCount, dim > 0,
+            query.count == dim, k > 0, metric != .hamming
+        else { return nil }
+        guard
+            let codeBuffer = Int8CodeCache.codes(
+                for: vectorBuffer.buffer,
+                vectorCount: vectorCount,
+                dim: dim,
+                corpus: corpus
+            )
+        else { return nil }
+
+        var queryNormSq: Float = 0
+        if metric == .cosine || metric == .l2 {
+            for value in query { queryNormSq += value * value }
+        }
+
+        var entries: [ParallelFlatScan.Entry]?
+        let cacheKey = CorpusNormKey(
+            bufferID: ObjectIdentifier(vectorBuffer.buffer),
+            bufferLength: vectorBuffer.buffer.length,
+            count: vectorCount,
+            dim: dim
         )
+        if metric == .innerProduct {
+            entries = query.withUnsafeBufferPointer { queryBuffer in
+                BoundedExactScan.search(
+                    query: queryBuffer.baseAddress!,
+                    corpus: corpus,
+                    codes: codeBuffer,
+                    norms: nil,
+                    queryNormSq: 0,
+                    vectorCount: vectorCount,
+                    dim: dim,
+                    topK: min(k, maxTopK),
+                    metric: metric
+                )
+            }
+        } else {
+            withCorpusSquaredNorms(
+                corpus: corpus, vectorCount: vectorCount, dim: dim, key: cacheKey
+            ) { normsBase in
+                entries = query.withUnsafeBufferPointer { queryBuffer in
+                    BoundedExactScan.search(
+                        query: queryBuffer.baseAddress!,
+                        corpus: corpus,
+                        codes: codeBuffer,
+                        norms: normsBase,
+                        queryNormSq: queryNormSq,
+                        vectorCount: vectorCount,
+                        dim: dim,
+                        topK: min(k, maxTopK),
+                        metric: metric
+                    )
+                }
+            }
+        }
+        guard let result = entries else { return nil }
+        return result.map { entry in
+            SearchResult(id: "", score: entry.distance, internalID: entry.id)
+        }
     }
 
     /// Row-wise squared norms of the corpus (cached per buffer+shape).
@@ -424,61 +529,43 @@ public enum FlatGPUSearch {
         metric: Metric,
         cacheKey: CorpusNormKey?
     ) -> [SearchResult] {
-        var dots = [Float](repeating: 0, count: vectorCount)
-
-        query.withUnsafeBufferPointer { queryBuffer in
-            guard let qBase = queryBuffer.baseAddress else { return }
-            dots.withUnsafeMutableBufferPointer { dotsBuffer in
-                guard let dotsBase = dotsBuffer.baseAddress else { return }
-                corpusDotProducts(
-                    corpus: corpus,
-                    query: qBase,
-                    vectorCount: vectorCount,
-                    dim: dim,
-                    output: dotsBase
-                )
-            }
-        }
-
         var queryNormSq: Float = 0
         if metric == .cosine || metric == .l2 {
             for value in query { queryNormSq += value * value }
         }
 
-        var selector = TopKSelector(topK: topK)
-        dots.withUnsafeBufferPointer { dotsBuffer in
-            guard let dotsBase = dotsBuffer.baseAddress else { return }
+        var entries: [ParallelFlatScan.Entry] = []
 
-            switch metric {
-            case .cosine:
-                withCorpusSquaredNorms(
-                    corpus: corpus, vectorCount: vectorCount, dim: dim, key: cacheKey
-                ) { normsBase in
-                    for row in 0..<vectorCount {
-                        let denom = (queryNormSq * normsBase[row]).squareRoot()
-                        let distance = denom < 1e-10 ? 1.0 : (1.0 - dotsBase[row] / denom)
-                        selector.append(distance: distance, id: UInt32(row))
-                    }
-                }
-            case .l2:
-                withCorpusSquaredNorms(
-                    corpus: corpus, vectorCount: vectorCount, dim: dim, key: cacheKey
-                ) { normsBase in
-                    for row in 0..<vectorCount {
-                        let distance = max(0, queryNormSq - 2.0 * dotsBase[row] + normsBase[row])
-                        selector.append(distance: distance, id: UInt32(row))
-                    }
-                }
-            case .innerProduct:
-                for row in 0..<vectorCount {
-                    selector.append(distance: -dotsBase[row], id: UInt32(row))
-                }
-            case .hamming:
-                break
+        func runScan(normsBase: UnsafePointer<Float>?) {
+            query.withUnsafeBufferPointer { queryBuffer in
+                guard let qBase = queryBuffer.baseAddress else { return }
+                entries = ParallelFlatScan.search(
+                    query: qBase,
+                    corpus: corpus,
+                    norms: normsBase,
+                    queryNormSq: queryNormSq,
+                    vectorCount: vectorCount,
+                    dim: dim,
+                    topK: topK,
+                    metric: metric
+                )
             }
         }
 
-        return selector.sortedAscending().map { entry in
+        switch metric {
+        case .cosine, .l2:
+            withCorpusSquaredNorms(
+                corpus: corpus, vectorCount: vectorCount, dim: dim, key: cacheKey
+            ) { normsBase in
+                runScan(normsBase: normsBase)
+            }
+        case .innerProduct:
+            runScan(normsBase: nil)
+        case .hamming:
+            break
+        }
+
+        return entries.map { entry in
             SearchResult(id: "", score: entry.distance, internalID: entry.id)
         }
     }
@@ -659,6 +746,36 @@ public enum FlatGPUSearch {
             }
             pointer[index] = sum
         }
+    }
+
+    /// Runs every query's host-tier scan concurrently across cores. Queries
+    /// are independent; results land in preallocated slots so no locking is
+    /// needed beyond the caches' internal locks.
+    private static func parallelHostBatchSearch(
+        queries: [[Float]],
+        vectors: any VectorStorage,
+        k: Int,
+        metric: Metric
+    ) -> [[SearchResult]] {
+        let count = queries.count
+        guard count > 1 else {
+            return queries.map { hostSearch(query: $0, vectors: vectors, k: k, metric: metric) }
+        }
+
+        let storage = UnsafeMutableBufferPointer<[SearchResult]>.allocate(capacity: count)
+        storage.initialize(repeating: [])
+        defer {
+            storage.deinitialize()
+            storage.deallocate()
+        }
+
+        let box = HostBatchWork(
+            queries: queries, vectors: vectors, k: k, metric: metric, results: storage
+        )
+        DispatchQueue.concurrentPerform(iterations: count) { index in
+            box.run(index)
+        }
+        return Array(storage)
     }
 
     /// Bounded max-heap top-K over each query's distance row.
@@ -881,6 +998,44 @@ private struct ConcurrentSlotBuffer<Element>: @unchecked Sendable {
     }
 }
 
+/// Scoped sendable box for parallel per-query work; slots are disjoint and
+/// the underlying buffers outlive the concurrentPerform join.
+private final class HostBatchWork: @unchecked Sendable {
+    private let queries: [[Float]]
+    private let vectors: any VectorStorage
+    private let k: Int
+    private let metric: Metric
+    private let results: UnsafeMutableBufferPointer<[SearchResult]>
+
+    init(
+        queries: [[Float]],
+        vectors: any VectorStorage,
+        k: Int,
+        metric: Metric,
+        results: UnsafeMutableBufferPointer<[SearchResult]>
+    ) {
+        self.queries = queries
+        self.vectors = vectors
+        self.k = k
+        self.metric = metric
+        self.results = results
+    }
+
+    func run(_ index: Int) {
+        // Mid-band corpora route through the exact int8 prefilter, mirroring
+        // single-query tier selection; everything else uses the fp32 scan.
+        if let bounded = FlatGPUSearch.boundedExactSearch(
+            query: queries[index], vectors: vectors, k: k, metric: metric
+        ) {
+            results[index] = bounded
+        } else {
+            results[index] = FlatGPUSearch.hostSearch(
+                query: queries[index], vectors: vectors, k: k, metric: metric
+            )
+        }
+    }
+}
+
 // Synchronized via NSLock; safe for concurrent access across isolation domains.
 private final class FlatPipelineStore: @unchecked Sendable {
     private let lock = NSLock()
@@ -911,7 +1066,7 @@ private final class FlatPipelineStore: @unchecked Sendable {
     }
 }
 
-// Synchronized via NSLock; pool is safe for concurrent acquire/release.
+// Synchronized via NSLock; safe for concurrent acquire/release.
 private final class FlatWorkspacePool: @unchecked Sendable {
     final class Workspace: @unchecked Sendable {
         let deviceID: ObjectIdentifier

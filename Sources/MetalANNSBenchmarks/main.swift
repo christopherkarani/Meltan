@@ -91,6 +91,7 @@ func makeBenchmarkConfig(
     if let exactSearchLimit = options.exactSearchLimit {
         config.exactSearchMaxVectorCount = exactSearchLimit
     }
+    config.exactTopK = options.exactTopK
 
     return config
 }
@@ -254,6 +255,10 @@ func printUsage() {
     print("  --degree <n>")
     print("  --efsearch <n>")
     print("  --k <n>")
+    print("  --dimension <n>          synthetic dataset dimensionality (default 128)")
+    print(
+        "  --exact-k                measure latency at exactly --k results (default searches top-100 for recall)"
+    )
     print("  --concurrency <n>           single concurrency level for normal runs (default 1)")
     print(
         "  --concurrency-sweep <list>  comma-separated concurrency levels (e.g. 1,2,4,8,16); switches mode to concurrency sweep"
@@ -280,6 +285,7 @@ struct ParsedBenchmarkOptions {
         case compare
         case ivfpq
         case ops
+        case profileHotpath
         case probe
         case help
     }
@@ -291,7 +297,6 @@ struct ParsedBenchmarkOptions {
     var jsonOutPath: String?
     var queryCount: Int?
     var vectorCount: Int?
-    var dimension: Int?
     var seed: Int? = 42
     var repeatRuns: Int = 1
     var warmupRuns: Int = 0
@@ -299,6 +304,8 @@ struct ParsedBenchmarkOptions {
     var sweepDegreeValues: [Int] = []
     var histogramOutPath: String?
     var metric: Metric?
+    var dimension: Int?
+    var exactTopK = false
     var degree: Int?
     var efSearch: Int?
     var k: Int?
@@ -423,6 +430,16 @@ func parseOptions(from args: [String]) throws -> ParsedBenchmarkOptions {
         case "--k":
             let value = try nextValue(for: arg, args: args, index: &index)
             options.k = try parsePositiveInt(arg, value)
+
+        case "--dimension":
+            let value = try nextValue(for: arg, args: args, index: &index)
+            options.dimension = try parsePositiveInt(arg, value)
+
+        case "--exact-k":
+            options.exactTopK = true
+
+        case "--profile-hotpath":
+            options.mode = .profileHotpath
 
         case "--exact-search-limit":
             let value = try nextValue(for: arg, args: args, index: &index)
@@ -880,6 +897,14 @@ do {
             try metadataReport.saveJSON(to: jsonOutPath)
             print("Saved JSON: \(jsonOutPath)")
         }
+
+    case .profileHotpath:
+        try await HotPathProfiler.run(
+            dim: options.dimension ?? 384,
+            k: options.k ?? 24,
+            metric: options.metric ?? .cosine,
+            sizes: [1_000, 5_000, 10_000, 20_000, 32_768, 50_000, 100_000]
+        )
 
     case .ops:
         let opsConfig = OpsBenchmark.Config(

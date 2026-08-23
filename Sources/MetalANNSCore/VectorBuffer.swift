@@ -42,9 +42,11 @@ public final class VectorBuffer: @unchecked Sendable {
     }
 
     deinit {
-        // Drop cached corpus norms before the MTLBuffer is released so a
-        // recycled buffer address can never be served a predecessor's norms.
+        // Drop cached corpus norms and int8 codes before the MTLBuffer is
+        // released so a recycled buffer address can never be served a
+        // predecessor's derived data.
         FlatGPUSearch.invalidateHostNormCache(buffer: buffer)
+        Int8CodeCache.invalidate(buffer: buffer)
     }
 
     public func setCount(_ newCount: Int) {
@@ -66,6 +68,7 @@ public final class VectorBuffer: @unchecked Sendable {
                 rawPointer.advanced(by: offset).update(from: baseAddress, count: dim)
             }
             FlatGPUSearch.invalidateHostNormCache(buffer: buffer)
+            Int8CodeCache.invalidate(buffer: buffer)
         }
     }
 
@@ -80,6 +83,7 @@ public final class VectorBuffer: @unchecked Sendable {
                 }
             }
             FlatGPUSearch.invalidateHostNormCache(buffer: buffer)
+            Int8CodeCache.invalidate(buffer: buffer)
         }
     }
 
