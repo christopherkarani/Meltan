@@ -2,6 +2,10 @@ import Foundation
 import MetalANNSCore
 
 extension GraphIndex {
+    /// - Parameters:
+    ///   - searchMode: Overrides `IndexConfiguration.searchMode` for this call.
+    ///     `nil` uses the configuration. `.fast` is approximate IVF-flat.
+    ///   - nprobe: Overrides `IndexConfiguration.ivfNProbe` for `.fast`.
     public func search(
         query: [Float],
         k: Int,
@@ -160,6 +164,7 @@ extension GraphIndex {
             var mapped: [[SearchResult]] = []
             mapped.reserveCapacity(queries.count)
             for query in queries {
+                try Task.checkCancellation()
                 let raw = try IVFFlatSearch.search(
                     query: query,
                     vectors: vectorBuffer,

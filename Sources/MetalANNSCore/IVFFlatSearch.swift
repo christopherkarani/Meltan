@@ -21,7 +21,9 @@ public enum IVFFlatSearch {
         min(defaultListCount, max(16, vectorCount / 64))
     }
 
-    /// `defaultListCount` means "auto": `listCount(for:)`. Any other value is honored.
+    /// `defaultListCount` (256) means "auto": `listCount(for:)`. There is no way
+    /// to pin exactly 256 lists on a corpus whose auto count is smaller; pass
+    /// 255 or 257 instead. Any other positive value is honored (clamped to `n`).
     public static func resolvedListCount(requested: Int, vectorCount: Int) -> Int {
         let auto = listCount(for: vectorCount)
         if requested == defaultListCount {
@@ -30,14 +32,15 @@ public enum IVFFlatSearch {
         return min(max(1, requested), vectorCount)
     }
 
-    /// Built inverted-list snapshot. Holds a pointer into the live corpus;
-    /// callers must keep the backing `VectorBuffer` alive.
+    /// Built inverted-list snapshot. Immutable after init: search only reads
+    /// owned packed/centroid/list storage. `@unchecked Sendable` because those
+    /// buffers are not mutated after publish; the cache `Store` lock serializes
+    /// insert/evict.
     public final class Partition: @unchecked Sendable {
         let nlist: Int
         let count: Int
         let dim: Int
         let metric: Metric
-        let corpus: UnsafePointer<Float>
         let packed: UnsafeMutablePointer<Float>
         let packedNormSq: UnsafeMutablePointer<Float>
         let centroids: UnsafeMutablePointer<Float>
@@ -52,7 +55,6 @@ public enum IVFFlatSearch {
             count: Int,
             dim: Int,
             metric: Metric,
-            corpus: UnsafePointer<Float>,
             packed: UnsafeMutablePointer<Float>,
             packedNormSq: UnsafeMutablePointer<Float>,
             centroids: UnsafeMutablePointer<Float>,
@@ -66,7 +68,6 @@ public enum IVFFlatSearch {
             self.count = count
             self.dim = dim
             self.metric = metric
-            self.corpus = corpus
             self.packed = packed
             self.packedNormSq = packedNormSq
             self.centroids = centroids
@@ -117,8 +118,11 @@ public enum IVFFlatSearch {
         k: Int,
         nprobe: Int,
         metric: Metric
-    ) -> [SearchResult] {
-        guard k > 0, partition.count > 0, query.count == partition.dim else { return [] }
+    ) throws -> [SearchResult] {
+        guard k > 0, partition.count > 0 else { return [] }
+        guard query.count == partition.dim else {
+            throw ANNSError.dimensionMismatch(expected: partition.dim, got: query.count)
+        }
         let effectiveMetric = metric
         return query.withUnsafeBufferPointer { queryBuffer in
             guard let queryBase = queryBuffer.baseAddress else { return [] }
@@ -146,7 +150,10 @@ public enum IVFFlatSearch {
         }
         let vectorCount = vectors.count
         let dim = vectors.dim
-        guard vectorCount > 0, dim > 0, query.count == dim else { return [] }
+        guard vectorCount > 0, dim > 0 else { return [] }
+        guard query.count == dim else {
+            throw ANNSError.dimensionMismatch(expected: dim, got: query.count)
+        }
         guard let corpus = vectors.floatPointer.baseAddress else { return [] }
 
         let lists = resolvedListCount(requested: nlist, vectorCount: vectorCount)
@@ -157,15 +164,25 @@ public enum IVFFlatSearch {
             )
         }
 
-        let partition = try cachedPartition(
-            buffer: vectors.buffer,
-            corpus: corpus,
-            vectorCount: vectorCount,
-            dim: dim,
-            metric: metric,
-            nlist: lists
-        )
-        return search(query: query, partition: partition, k: k, nprobe: probe, metric: metric)
+        let partition: Partition
+        do {
+            partition = try cachedPartition(
+                buffer: vectors.buffer,
+                corpus: corpus,
+                vectorCount: vectorCount,
+                dim: dim,
+                metric: metric,
+                nlist: lists
+            )
+        } catch {
+            logger.error(
+                "IVF-flat partition build failed; falling back to exact scan: \(error.localizedDescription, privacy: .public)"
+            )
+            return FlatGPUSearch.hostSearch(
+                query: query, vectors: vectors, k: k, metric: metric
+            )
+        }
+        return try search(query: query, partition: partition, k: k, nprobe: probe, metric: metric)
     }
 
     /// Warms the inverted-list cache so the first search does not pay k-means.
@@ -602,7 +619,6 @@ public enum IVFFlatSearch {
             count: count,
             dim: dim,
             metric: metric,
-            corpus: corpus,
             packed: packed,
             packedNormSq: packedNormSq,
             centroids: centroids,

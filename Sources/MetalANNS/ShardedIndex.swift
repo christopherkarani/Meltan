@@ -235,10 +235,14 @@ public actor _ShardedIndex {
             metric: searchMetric,
             count: probeCount
         )
-        // Batch mode uses a deeper per-shard candidate set. Keeping this above
-        // the GPU beam-search cutoff steers toward the CPU/HNSW path, which is
-        // currently more stable for batched sharded recall.
-        let perShardK = max(k, max(257, min(512, max(configuration.efSearch * 4, k * 16))))
+        // Extra per-shard candidates for the merge. When the caller-visible k
+        // still fits the fused exact-scan cap, stay on that path. Above the
+        // cap, keep a deep candidate set so a single shard can still fill k.
+        let desiredPerShardK = max(k, min(512, max(configuration.efSearch * 4, k * 16)))
+        let perShardK =
+            k <= FlatGPUSearch.maxTopK
+            ? min(desiredPerShardK, FlatGPUSearch.maxTopK)
+            : desiredPerShardK
 
         var mergedResults = BoundedSortedList<SearchResult>(capacity: k) {
             $0.score < $1.score

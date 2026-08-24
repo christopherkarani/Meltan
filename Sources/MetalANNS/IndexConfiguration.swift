@@ -30,9 +30,11 @@ public struct IndexConfiguration: Sendable, Codable {
     public var exactSearchMaxVectorCount: Int
     /// `.fast` selects host IVF-flat (approximate). Default is `.exact`.
     public var searchMode: SearchMode
-    /// Coarse k-means list count for `.fast`. Clamped at search time.
+    /// Coarse k-means list count for `.fast`. The default (256) means auto:
+    /// `min(256, max(16, n/64))`. Clamped at search time.
     public var ivfListCount: Int
-    /// Number of inverted lists probed for `.fast`.
+    /// Number of inverted lists probed for `.fast`. Clamped to the resolved
+    /// list count at search time.
     public var ivfNProbe: Int
 
     public static let `default` = IndexConfiguration(

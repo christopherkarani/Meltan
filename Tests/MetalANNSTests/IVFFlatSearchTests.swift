@@ -189,4 +189,123 @@ struct IVFFlatSearchTests {
         let truth = bruteForceTopK(query: query, vectors: rows, k: 10, metric: .cosine)
         #expect(Set(predicted) == Set(truth))
     }
+
+    @Test("nprobe >= nlist matches brute-force IDs")
+    func fullProbeMatchesBruteForce() throws {
+        let dim = 32
+        let count = 256
+        let k = 10
+        let nlist = 16
+        let rows = seededVectors(count: count, dim: dim, seed: 19)
+        let query = seededVector(dim: dim, seed: 41)
+        let buffer = try VectorBuffer(capacity: count, dim: dim)
+        try buffer.batchInsert(vectors: rows, startingAt: 0)
+        buffer.setCount(count)
+
+        let results = try IVFFlatSearch.search(
+            query: query,
+            vectors: buffer,
+            k: k,
+            nlist: nlist,
+            nprobe: nlist,
+            metric: .cosine
+        )
+        let predicted = results.map(\.internalID)
+        let truth = bruteForceTopK(query: query, vectors: rows, k: k, metric: .cosine)
+        #expect(predicted == truth)
+    }
+
+    @Test("Wrong query dimension throws dimensionMismatch")
+    func searchRejectsDimensionMismatch() throws {
+        let rows = seededVectors(count: 256, dim: 16, seed: 2)
+        let buffer = try VectorBuffer(capacity: 256, dim: 16)
+        try buffer.batchInsert(vectors: rows, startingAt: 0)
+        buffer.setCount(256)
+
+        do {
+            _ = try IVFFlatSearch.search(
+                query: Array(repeating: 0, count: 15),
+                vectors: buffer,
+                k: 5,
+                nlist: 16,
+                nprobe: 4,
+                metric: .cosine
+            )
+            Issue.record("Expected dimensionMismatch")
+        } catch {
+            guard case ANNSError.dimensionMismatch(let expected, let got) = error else {
+                Issue.record("Expected dimensionMismatch, got \(error)")
+                return
+            }
+            #expect(expected == 16)
+            #expect(got == 15)
+        }
+    }
+
+    @Test("GraphIndex .fast batchSearch throws on a mismatched query")
+    func graphIndexFastBatchSearchRejectsDimensionMismatch() async throws {
+        let dim = 32
+        let count = 256
+        let rows = seededVectors(count: count, dim: dim, seed: 8)
+        let ids = (0..<count).map { "v_\($0)" }
+        let index = GraphIndex(
+            configuration: IndexConfiguration(
+                degree: 16,
+                metric: .cosine,
+                efSearch: 32,
+                searchMode: .fast,
+                ivfListCount: 16,
+                ivfNProbe: 4
+            )
+        )
+        try await index.build(vectors: rows, ids: ids)
+
+        do {
+            _ = try await index.batchSearch(
+                queries: [Array(repeating: Float(0), count: dim - 1)],
+                k: 5
+            )
+            Issue.record("Expected dimensionMismatch")
+        } catch {
+            guard case ANNSError.dimensionMismatch(let expected, let got) = error else {
+                Issue.record("Expected dimensionMismatch, got \(error)")
+                return
+            }
+            #expect(expected == dim)
+            #expect(got == dim - 1)
+        }
+    }
+
+    @Test("Insert after .fast build is visible to the next search")
+    func insertInvalidatesCachedPartition() async throws {
+        let dim = 32
+        let count = 300
+        var rows = seededClusteredVectors(
+            count: count,
+            dim: dim,
+            centers: seededVectors(count: 12, dim: dim, seed: 4),
+            seed: 13
+        )
+        let ids = (0..<count).map { "v_\($0)" }
+        let index = GraphIndex(
+            configuration: IndexConfiguration(
+                degree: 16,
+                metric: .cosine,
+                efSearch: 32,
+                searchMode: .fast,
+                ivfListCount: 32,
+                ivfNProbe: 8
+            )
+        )
+        try await index.build(vectors: rows, ids: ids)
+
+        var outlier = [Float](repeating: 0, count: dim)
+        outlier[0] = 50
+        try await index.insert(outlier, id: "outlier")
+        rows.append(outlier)
+
+        let results = try await index.search(query: outlier, k: 1)
+        let first = try #require(results.first)
+        #expect(first.id == "outlier")
+    }
 }
