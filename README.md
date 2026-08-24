@@ -105,7 +105,7 @@ Default search is a fused exact scan (CPU NEON / int8 prefilter / one GPU dispat
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/christopherkarani/MetalANNS.git", from: "0.2.2")
+    .package(url: "https://github.com/christopherkarani/MetalANNS.git", from: "0.3.0")
 ]
 ```
 
