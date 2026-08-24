@@ -90,6 +90,9 @@ struct BoundedPriorityBuffer<Element> {
     let capacity: Int
     private let outranks: (Element, Element) -> Bool
 
+    /// - `outranks` must be a strict total order over ranks and every rank
+    ///   must be finite: NaN is incomparable under strict `<` and can wedge
+    ///   eviction; ±Inf orders sanely but signals upstream numeric failure.
     init(capacity: Int, outranks: @escaping (Element, Element) -> Bool) {
         self.capacity = max(0, capacity)
         self.outranks = outranks
@@ -153,30 +156,37 @@ struct BoundedPriorityBuffer<Element> {
 /// Insertion is O(log n) search + shift; equal-rank elements keep the
 /// most recently inserted ahead of earlier ones.
 package struct BoundedSortedList<Element> {
-    let capacity: Int
-    package private(set) var elements: [Element] = []
+    package let capacity: Int
+    /// Snapshot in best-first (ascending under `outranks`) order; O(n)
+    /// copy-on-write copy.
+    package private(set) var sortedElements: [Element] = []
     private let outranks: @Sendable (Element, Element) -> Bool
 
+    /// - `outranks` must be a strict total order over ranks; equal-rank
+    ///   duplicates are permitted and rank most recently inserted first.
+    /// - Ranks must be finite: NaN is incomparable under strict `<` and can
+    ///   wedge the eviction gate (a NaN worst is never outranked); ±Inf
+    ///   orders sanely and remains evictable.
     package init(capacity: Int, outranks: @escaping @Sendable (Element, Element) -> Bool) {
         self.capacity = max(0, capacity)
         self.outranks = outranks
-        elements.reserveCapacity(self.capacity)
+        sortedElements.reserveCapacity(self.capacity)
     }
 
-    var count: Int { elements.count }
+    package var count: Int { sortedElements.count }
 
     package mutating func insert(_ element: Element) {
         guard capacity > 0 else {
             return
         }
-        if let worst = elements.last, elements.count >= capacity, !outranks(element, worst) {
+        if let worst = sortedElements.last, sortedElements.count >= capacity, !outranks(element, worst) {
             return
         }
 
         let insertionIndex = lowerBound(of: element)
-        elements.insert(element, at: insertionIndex)
-        if elements.count > capacity {
-            elements.removeLast()
+        sortedElements.insert(element, at: insertionIndex)
+        if sortedElements.count > capacity {
+            sortedElements.removeLast()
         }
     }
 
@@ -188,11 +198,11 @@ package struct BoundedSortedList<Element> {
 
     private func lowerBound(of element: Element) -> Int {
         var low = 0
-        var high = elements.count
+        var high = sortedElements.count
 
         while low < high {
             let mid = (low + high) / 2
-            if outranks(elements[mid], element) {
+            if outranks(sortedElements[mid], element) {
                 low = mid + 1
             } else {
                 high = mid
@@ -203,4 +213,6 @@ package struct BoundedSortedList<Element> {
     }
 }
 
+/// Conditionally Sendable: the stored comparator is `@Sendable`, so safety
+/// reduces to `Element` itself.
 extension BoundedSortedList: Sendable where Element: Sendable {}

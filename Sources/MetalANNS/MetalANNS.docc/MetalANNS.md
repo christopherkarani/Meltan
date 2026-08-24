@@ -1,16 +1,16 @@
 # ``MetalANNS``
 
-GPU-native approximate nearest neighbor search for Apple Silicon.
+On-device vector search for Apple Silicon. Default search is exact.
 
 ## Overview
 
-MetalANNS is a production-grade vector search library built from the ground up for Metal's compute architecture. It uses CAGRA-style NN-Descent graphs — fully GPU-parallelizable, unlike sequential HNSW — to deliver high-recall approximate nearest neighbor search on-device.
+MetalANNS is a Swift vector search library for Metal's unified memory. Default search is a fused exact scan (recall@10 = 1.000). A CAGRA-style NN-Descent graph is still used for construction, mutations, and the large-n fallback. Opt-in `.fast` (IVF-flat) trades a little recall for lower latency.
 
-The library provides a type-safe Swift API with actor-based concurrency, mutable indexes, multiple persistence modes, and a rich query filtering DSL. A dual-backend architecture uses Metal compute shaders on Apple Silicon and falls back to Accelerate (vDSP/BLAS) on simulators and CI.
+The API is type-state `VectorIndex`, actor isolation under Swift 6, mutable indexes, mmap persistence, and a metadata filter DSL. Metal compute shaders run on device; simulators and CI use Accelerate (vDSP/BLAS).
 
 ### Key Capabilities
 
-- **GPU-accelerated graph construction and search** via Metal compute shaders
+- **Exact search by default**, with Metal/NEON kernels and an opt-in IVF `.fast` mode
 - **Mutable indexes** — insert, delete, batch update, and compact at runtime
 - **Filtered search** with a type-safe result builder DSL supporting boolean logic
 - **Multiple persistence modes** — binary, zero-copy mmap, and disk-backed streaming

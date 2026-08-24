@@ -187,7 +187,7 @@ public actor _ShardedIndex {
             }
         }
 
-        return mergedResults.elements
+        return mergedResults.sortedElements
     }
 
     public func batchSearch(
@@ -262,7 +262,7 @@ public actor _ShardedIndex {
             }
         }
 
-        return mergedResults.elements
+        return mergedResults.sortedElements
     }
 
     public var count: Int {
@@ -304,6 +304,6 @@ public actor _ShardedIndex {
             best.insert((index, distance))
         }
 
-        return best.elements.map(\.index)
+        return best.sortedElements.map(\.index)
     }
 }

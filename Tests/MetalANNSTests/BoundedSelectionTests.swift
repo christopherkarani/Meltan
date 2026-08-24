@@ -80,14 +80,14 @@ struct BoundedSelectionTests {
         var list = BoundedSortedList<(score: Int, tag: String)>(capacity: 3) { $0.score < $1.score }
         list.insert((5, "old"))
         list.insert((5, "new"))
-        #expect(list.elements.map(\.tag) == ["new", "old"])
+        #expect(list.sortedElements.map(\.tag) == ["new", "old"])
 
         list.insert((3, "c3"))
         list.insert((4, "d4"))
-        #expect(list.elements.map(\.tag) == ["c3", "d4", "new"])
+        #expect(list.sortedElements.map(\.tag) == ["c3", "d4", "new"])
 
         list.insert((5, "rejected"))
-        #expect(list.elements.map(\.tag) == ["c3", "d4", "new"])
+        #expect(list.sortedElements.map(\.tag) == ["c3", "d4", "new"])
     }
 
     @Test("Sorted list with zero capacity stores nothing")
@@ -95,7 +95,7 @@ struct BoundedSelectionTests {
         var list = BoundedSortedList<Int>(capacity: 0) { $0 < $1 }
         list.insert(contentsOf: [3, 1, 2])
         #expect(list.count == 0)
-        #expect(list.elements.isEmpty)
+        #expect(list.sortedElements.isEmpty)
     }
 
     private struct ScoredItem {
@@ -143,9 +143,42 @@ struct BoundedSelectionTests {
             }
 
             #expect(list.count == min(capacity, length), "trial \(trial)")
-            #expect(list.elements.map(\.id) == reference.map(\.id), "trial \(trial)")
-            #expect(list.elements.map(\.score) == reference.map(\.score), "trial \(trial)")
+            #expect(list.sortedElements.map(\.id) == reference.map(\.id), "trial \(trial)")
+            #expect(list.sortedElements.map(\.score) == reference.map(\.score), "trial \(trial)")
         }
+    }
+
+    @Test("Sorted list rejects non-finite candidates once saturated with finite ranks")
+    func sortedListRejectsNonFiniteWhenSaturated() {
+        var list = BoundedSortedList<(score: Float, id: Int)>(capacity: 3) { $0.score < $1.score }
+        list.insert((1, 10))
+        list.insert((3, 30))
+        list.insert((2, 20))
+
+        list.insert((Float.nan, 99))
+        list.insert((Float.infinity, 98))
+
+        #expect(list.sortedElements.map(\.id) == [10, 20, 30])
+        #expect(list.sortedElements.allSatisfy { $0.score.isFinite })
+    }
+
+    /// Pins the documented NaN wedge precisely: a non-finite rank admitted
+    /// while unsaturated sorts to the worst slot and can never be outranked,
+    /// so better finite candidates are rejected from then on. The finite
+    /// prefix stays correctly best-first; the contract requires callers to
+    /// pass finite ranks.
+    @Test("Non-finite rank poisons the worst slot and wedges eviction")
+    func sortedListNonFinitePoisonsWorstSlot() {
+        var list = BoundedSortedList<(score: Float, id: Int)>(capacity: 3) { $0.score < $1.score }
+        list.insert((Float.nan, 0))
+        list.insert((5, 1))
+        list.insert((3, 2))
+        // Better than the finite worst (5) yet rejected behind the poisoned slot.
+        list.insert((4, 3))
+
+        #expect(list.sortedElements.map(\.id) == [2, 1, 0])
+        #expect(!list.sortedElements[2].score.isFinite)
+        #expect(list.sortedElements.prefix(2).allSatisfy { $0.score.isFinite })
     }
 
     // MARK: - Shared fixtures

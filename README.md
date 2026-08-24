@@ -17,114 +17,91 @@
 
 ---
 
-**MetalANNS** is a high-performance, GPU-native vector search engine engineered exclusively for **Apple Silicon**. By leveraging Metal compute shaders and a CAGRA-inspired graph architecture, it delivers sub-millisecond Approximate Nearest Neighbor Search (ANNS) directly on the device.
+**MetalANNS** is a Swift vector search library for Apple Silicon. Search runs on-device. Default search is **exact** (recall@10 = 1.000), not a graph walk that you have to tune.
+
+At the 10k–100k sizes typical of on-device memory, that exact path is faster on an M3 Max than FAISS, hnswlib, USearch, and sqlite-vec when those tools are held to the same recall.
 
 *[Español](locales/README.es.md) | [日本語](locales/README.ja.md) | [Português (Brasil)](locales/README.pt-BR.md) | [中文](locales/README.zh-CN.md)*
 
-- **Fast**: 10x-20x faster query throughput than CPU-based HNSW by exploiting GPU parallelism.
-- **Unified Memory**: Optimized for Apple’s UMA — zero unnecessary memory copies between CPU and GPU.
-- **Type-Safe State**: Uses Swift's generic type-state machine to prevent runtime errors (e.g., searching an unbuilt index).
-- **Hybrid Search**: First-class support for metadata filtering powered by an integrated SQL engine.
+- **Measured.** Same-machine bake-off vs FAISS / hnswlib / USearch / sqlite-vec: [BENCHMARKS.md](BENCHMARKS.md).
+- **Exact by default.** Opt-in `.fast` (IVF-flat) if you want tens of microseconds and will take ~0.95–0.99 recall.
+- **Swift 6.** Type-state `VectorIndex` so you cannot search an unbuilt index.
+- **Filters.** Metadata DSL on top of SQLite (GRDB).
+- **Persistence.** Full load, zero-copy `mmap`, or disk-backed read-only.
 
 ---
 
-## 🚀 Performance that Dominates
+## Performance
 
-MetalANNS is built for the **Unified Memory Architecture** of M-series and A-series chips. While traditional libraries like HNSW are inherently sequential, MetalANNS uses **CAGRA** (CUDA-Accelerated Graph-based Approximate) principles, adapted for Metal, to perform massively parallel searches.
+Single-query warm p50 on Apple M3 Max, dim 384, cosine, in-process. Graph indexes (hnswlib, USearch, FAISS HNSW) were tuned until recall@10 ≥ 0.99. MetalANNS default is exact.
 
-### Index Build Speed (100k Vectors, 128D)
+| Backend | 10k | 100k | Recall@10 |
+|---|---:|---:|---|
+| **MetalANNS exact** | **88 µs** | **831 µs** | 1.000 / 0.999 |
+| FAISS IndexFlatIP | 227 µs | 1 521 µs | 1.000 |
+| NumPy scan | 161 µs | 2 330 µs | 1.000 |
+| sqlite-vec | 794 µs | 7 906 µs | 1.000 |
+| FAISS HNSW | 207 µs | 4 024 µs | ~0.99 |
+| hnswlib | 639 µs | 3 096 µs | ~0.99 |
+| USearch | 545 µs | 7 693 µs | ~0.99 |
+
 <p align="center">
-  <img src="docs/assets/chart-build-time.svg" alt="Build Time Comparison" width="600">
-  <br>
-  <i>Benchmark: M3 Max (30-core GPU). MetalANNS constructs the graph in parallel using compute shaders.</i>
+  <img src="docs/benchmarks/competitive-latency.png" alt="MetalANNS vs FAISS, hnswlib, USearch, sqlite-vec single-query latency" width="900">
 </p>
 
-### Search Efficiency: Recall vs. Latency
-<p align="center">
-  <img src="docs/assets/chart-recall-latency.svg" alt="Recall vs Latency Curve" width="600">
-  <br>
-  <i>MetalANNS maintains perfect recall at 10x the throughput of competitive CPU libraries.</i>
-</p>
+0.999 at 100k is fp32 tie-order versus a scalar reference, not missed neighbors. Graphs only look faster here if you leave `ef` low and accept recall like 0.13. At millions of vectors they win; that is a different problem.
+
+**Opt-in `.fast`** (IVF, nprobe chosen so recall@10 stays honest):
+
+| n | Exact p50 | `.fast` p50 | recall@10 |
+|---:|---:|---:|---:|
+| 1k | 0.029 ms | 0.018 ms (nprobe 8) | 1.000 |
+| 10k | 0.100 ms | 0.016 ms (nprobe 4) | 0.976 |
+| 50k | 0.49 ms | 0.034 ms (nprobe 4) | 0.978 |
+| 100k | 0.90 ms | 0.102 ms (nprobe 8) | 0.995 |
+
+Do not claim 10× at 1k. Exact is already 29 µs. Reproduce commands: [BENCHMARKS.md](BENCHMARKS.md).
 
 ---
 
-## ✨ Elegant API
+## API
 
-Designed for the modern Swift developer. Zero boilerplate, fully `async/await` native, and statically safe.
+Type-state index: `Unbuilt` → `Ready` → `ReadOnly`. The compiler blocks search on an unbuilt index and mutations on a read-only one.
 
-### 1. Configure & Initialize
-Initialize with a specific state. The compiler will prevent you from calling `.search()` on an unbuilt index.
 ```swift
 import MetalANNS
 
 let config = IndexConfiguration(degree: 32, metric: .cosine)
+// Faster, not exact:
+// IndexConfiguration(degree: 32, metric: .cosine, searchMode: .fast)
 let index = VectorIndex<String, VectorIndexState.Unbuilt>(configuration: config)
-```
 
-### 2. Parallel Build
-Leverage the GPU to build the search graph from your embeddings in seconds.
-```swift
 let readyIndex = try await index.build(
     vectors: myEmbeddings, // [[Float]]
     ids: myDocumentIDs     // [String]
 )
-```
 
-### 3. Hybrid Search
-Combine vector similarity with SQL-like metadata filtering in a single pass.
-```swift
-// Use the elegant Query DSL
 let results = try await readyIndex.search(query: queryVector, topK: 10) {
     QueryFilter.equals(Field<String>("category"), "research")
     QueryFilter.greaterThan(Field<Float>("relevance"), 0.85)
 }
 
-for hit in results {
-    print("Found \(hit.id) with score: \(hit.score)")
-}
-```
-
-### 4. Zero-Copy Persistence
-Save your index to disk and load it instantly using memory-mapping — ideal for memory-constrained iOS devices.
-```swift
 try await readyIndex.save(to: fileURL)
-
-// Instant load with zero memory overhead
-let loadedIndex = try await VectorIndex<String, VectorIndexState.Ready>
+let loaded = try await VectorIndex<String, VectorIndexState.Ready>
     .loadReadOnly(from: fileURL, mode: .mmap)
 ```
 
 ---
 
-## 🐊 Technical Superiority
+## How search works
 
-Why choose MetalANNS over HNSW or FAISS?
+Default search is a fused exact scan (CPU NEON / int8 prefilter / one GPU dispatch), not a per-hop graph walk. A CAGRA-style fixed-degree graph is still built for construction, edits, and the large-n fallback. HNSW is sequential to construct; this graph is GPU-parallel. That is a construction story, not why 10k queries are 88 µs.
 
-| Feature | MetalANNS | HNSWLib (CPU) |
-| :--- | :--- | :--- |
-| **Architecture** | CAGRA (GPU Parallel) | HNSW (CPU Sequential) |
-| **Memory copies** | **Zero (UMA)** | High (PCIe/Bus) |
-| **Concurrency** | Swift 6 Actors | Mutex/Locks |
-| **Persistence** | Zero-copy `mmap` | Full memory load |
-| **API Safety** | Type-State Machine | Runtime checks |
-
-> [!IMPORTANT]
-> **CAGRA vs. HNSW**: HNSW builds a hierarchical graph that is difficult to parallelize during construction. MetalANNS uses a fixed-degree directed graph (CAGRA) which allows thousands of GPU threads to explore the search space simultaneously.
+`.fast` probes `nprobe` inverted lists and exact-scans those rows on the CPU. No Metal round trip. Default nprobe is 4; raise it at 1k and 100k if you want recall@10 ≥ 0.99.
 
 ---
 
-## 🐊 The Mascot
-
-The **MetalANNS Crocodile** represents our core philosophy: 
-1. **Low Latency**: Attacks the search problem with predatory speed.
-2. **Apple Ecosystem**: Perfectly adapted to its habitat (Metal/Swift).
-3. **Powerful Grip**: High recall that never lets go of accuracy.
-
----
-
-## 📦 Installation
-
-Add MetalANNS to your `Package.swift`:
+## Install
 
 ```swift
 dependencies: [
@@ -132,6 +109,8 @@ dependencies: [
 ]
 ```
 
-## 📄 License
+Platforms: macOS 14+, iOS 17+, visionOS 1+.
 
-MetalANNS is available under the MIT license. See [LICENSE](LICENSE) for more info.
+## License
+
+MIT. See [LICENSE](LICENSE).

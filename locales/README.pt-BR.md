@@ -2,6 +2,8 @@
 
 **Busca vetorial nativa em GPU para Apple Silicon.** Swift + Metal puro. Sem C++. Sem nuvem. Sem compromisso.
 
+Numeros atuais (tabela vs FAISS / hnswlib / USearch / sqlite-vec): [README em ingles](../README.md) e [BENCHMARKS.md](../BENCHMARKS.md). A busca padrao e exata.
+
 MetalANNS traz busca aproximada de vizinhos mais proximos em nivel de producao para iOS, macOS e visionOS — rodando inteiramente no dispositivo com aceleracao GPU via Metal compute shaders.
 
 *[English](../README.md) | [中文](README.zh-CN.md) | [日本語](README.ja.md) | Português | [Español](README.es.md)*

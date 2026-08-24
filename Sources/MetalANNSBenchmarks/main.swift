@@ -92,6 +92,13 @@ func makeBenchmarkConfig(
         config.exactSearchMaxVectorCount = exactSearchLimit
     }
     config.exactTopK = options.exactTopK
+    config.searchMode = options.searchMode
+    if let ivfListCount = options.ivfListCount {
+        config.ivfListCount = ivfListCount
+    }
+    if let ivfNProbe = options.ivfNProbe {
+        config.ivfNProbe = ivfNProbe
+    }
 
     return config
 }
@@ -259,6 +266,11 @@ func printUsage() {
     print(
         "  --exact-k                measure latency at exactly --k results (default searches top-100 for recall)"
     )
+    print("  --fast                  opt-in IVF-flat approximate search (SearchMode.fast)")
+    print("  --nlist <n>             IVF coarse list count for --fast (default 256)")
+    print("  --nprobe <n>            IVF lists probed for --fast (default 8)")
+    print("  --ab-fast               same-process exact vs .fast A/B on one corpus")
+    print("  --sweep-nprobe <list>   Pareto over nprobe values (implies --fast)")
     print("  --concurrency <n>           single concurrency level for normal runs (default 1)")
     print(
         "  --concurrency-sweep <list>  comma-separated concurrency levels (e.g. 1,2,4,8,16); switches mode to concurrency sweep"
@@ -274,6 +286,11 @@ func printUsage() {
     print("  --ivfpq-nprobe <n>")
     print("  --ivfpq-iterations <n>")
     print("  --probe                  run the flat exact-search component probe")
+    print("  --fast                   IVF-flat search (opt-in; default remains exact)")
+    print("  --nlist <n>              IVF coarse lists for --fast (default 256)")
+    print("  --nprobe <n>             IVF lists probed for --fast (default 4)")
+    print("  --ab-fast                same-process A/B of exact vs .fast")
+    print("  --sweep-nprobe <list>    recall-vs-QPS nprobe sweep (implies --fast)")
     print("  --help")
 }
 
@@ -287,6 +304,8 @@ struct ParsedBenchmarkOptions {
         case ops
         case profileHotpath
         case probe
+        case abFast
+        case nprobeSweep
         case help
     }
 
@@ -323,6 +342,10 @@ struct ParsedBenchmarkOptions {
     var ivfpqTrainingIterations: Int = 10
     var probeVectorCounts: [Int] = [10_000, 50_000, 100_000]
     var probeDims: [Int] = [128, 384, 768]
+    var searchMode: SearchMode = .exact
+    var ivfListCount: Int?
+    var ivfNProbe: Int?
+    var sweepNProbeValues: [Int] = []
 }
 
 func parseOptions(from args: [String]) throws -> ParsedBenchmarkOptions {
@@ -431,12 +454,28 @@ func parseOptions(from args: [String]) throws -> ParsedBenchmarkOptions {
             let value = try nextValue(for: arg, args: args, index: &index)
             options.k = try parsePositiveInt(arg, value)
 
-        case "--dimension":
-            let value = try nextValue(for: arg, args: args, index: &index)
-            options.dimension = try parsePositiveInt(arg, value)
-
         case "--exact-k":
             options.exactTopK = true
+
+        case "--fast":
+            options.searchMode = .fast
+
+        case "--nlist":
+            let value = try nextValue(for: arg, args: args, index: &index)
+            options.ivfListCount = try parsePositiveInt(arg, value)
+
+        case "--nprobe":
+            let value = try nextValue(for: arg, args: args, index: &index)
+            options.ivfNProbe = try parsePositiveInt(arg, value)
+
+        case "--ab-fast":
+            options.mode = .abFast
+
+        case "--sweep-nprobe":
+            let value = try nextValue(for: arg, args: args, index: &index)
+            options.sweepNProbeValues = try parseIntList(value, flag: arg)
+            options.mode = .nprobeSweep
+            options.searchMode = .fast
 
         case "--profile-hotpath":
             options.mode = .profileHotpath
@@ -660,6 +699,145 @@ do {
             try results.latencyDistribution.cdfCSV().write(to: cdfURL, atomically: true, encoding: .utf8)
             print("Saved histogram: \(histogramURL.path)")
             print("Saved CDF: \(cdfURL.path)")
+        }
+
+    case .abFast:
+        var datasetLabel = "synthetic"
+        let dataset: BenchmarkDataset
+        if let datasetPath = options.datasetPath {
+            dataset = try BenchmarkDataset.load(from: datasetPath)
+            datasetLabel = datasetPath
+        } else {
+            let queryCount = options.queryCount ?? 100
+            dataset = BenchmarkDataset.synthetic(
+                trainCount: options.vectorCount ?? 1000,
+                testCount: queryCount,
+                dimension: options.dimension ?? 128,
+                k: max(100, options.k ?? 10),
+                metric: options.metric ?? .cosine,
+                seed: options.seed ?? 42
+            )
+        }
+        var exactConfig = try makeBenchmarkConfig(
+            from: BenchmarkRunner.Config(
+                vectorCount: dataset.trainVectors.count,
+                dim: dataset.dimension,
+                queryCount: options.queryCount ?? dataset.testVectors.count,
+                k: options.k ?? 10,
+                efSearch: options.efSearch ?? 64,
+                metric: options.metric ?? dataset.metric
+            ),
+            options
+        )
+        exactConfig.searchMode = .exact
+        var fastConfig = exactConfig
+        fastConfig.searchMode = .fast
+
+        let exact = try await BenchmarkRunner.run(
+            config: exactConfig,
+            dataset: dataset,
+            repeatRuns: options.repeatRuns,
+            warmupRuns: options.warmupRuns
+        )
+        let fast = try await BenchmarkRunner.run(
+            config: fastConfig,
+            dataset: dataset,
+            repeatRuns: options.repeatRuns,
+            warmupRuns: options.warmupRuns
+        )
+        let ratio = exact.queryLatencyP50Ms / max(fast.queryLatencyP50Ms, 1e-9)
+        print("== Same-process A/B exact vs .fast ==")
+        print(
+            "exact  p50=\(String(format: "%.3f", exact.queryLatencyP50Ms)) ms  recall@10=\(String(format: "%.3f", exact.recallAt10))  recall@100=\(String(format: "%.3f", exact.recallAt100))"
+        )
+        print(
+            "fast   p50=\(String(format: "%.3f", fast.queryLatencyP50Ms)) ms  recall@10=\(String(format: "%.3f", fast.recallAt10))  recall@100=\(String(format: "%.3f", fast.recallAt100))  nprobe=\(fastConfig.ivfNProbe) nlist=\(fastConfig.ivfListCount)"
+        )
+        print("ratio  exact/fast p50 = \(String(format: "%.2f", ratio))x")
+
+        let report = BenchmarkReport(
+            rows: [
+                reportRow(from: exact, label: "exact"),
+                reportRow(from: fast, label: "fast"),
+            ],
+            datasetLabel: datasetLabel,
+            metadata: benchmarkMetadata(
+                mode: "ab-fast",
+                config: fastConfig,
+                datasetLabel: datasetLabel,
+                csvOut: options.csvOutPath,
+                repeatRuns: options.repeatRuns,
+                warmupRuns: options.warmupRuns,
+                seed: options.seed
+            )
+        )
+        print(report.renderTable())
+        if let csvOutPath = options.csvOutPath {
+            try report.saveCSV(to: csvOutPath)
+            print("Saved CSV: \(csvOutPath)")
+        }
+
+    case .nprobeSweep:
+        var datasetLabel = "synthetic"
+        let dataset: BenchmarkDataset
+        if let datasetPath = options.datasetPath {
+            dataset = try BenchmarkDataset.load(from: datasetPath)
+            datasetLabel = datasetPath
+        } else {
+            let queryCount = options.queryCount ?? 100
+            dataset = BenchmarkDataset.synthetic(
+                trainCount: options.vectorCount ?? 1000,
+                testCount: queryCount,
+                dimension: options.dimension ?? 128,
+                k: max(100, options.k ?? 10),
+                metric: options.metric ?? .cosine,
+                seed: options.seed ?? 42
+            )
+        }
+        var baseConfig = try makeBenchmarkConfig(
+            from: BenchmarkRunner.Config(
+                vectorCount: dataset.trainVectors.count,
+                dim: dataset.dimension,
+                queryCount: options.queryCount ?? dataset.testVectors.count,
+                k: options.k ?? 10,
+                efSearch: options.efSearch ?? 64,
+                metric: options.metric ?? dataset.metric
+            ),
+            options
+        )
+        baseConfig.searchMode = .fast
+        var rows: [BenchmarkReport.Row] = []
+        for nprobe in options.sweepNProbeValues {
+            var config = baseConfig
+            config.ivfNProbe = nprobe
+            let results = try await BenchmarkRunner.run(
+                config: config,
+                dataset: dataset,
+                repeatRuns: options.repeatRuns,
+                warmupRuns: options.warmupRuns
+            )
+            rows.append(reportRow(from: results, label: "nprobe=\(nprobe)"))
+            print(
+                "nprobe=\(nprobe) p50=\(String(format: "%.3f", results.queryLatencyP50Ms)) ms QPS=\(String(format: "%.0f", results.qps)) recall@10=\(String(format: "%.3f", results.recallAt10)) recall@100=\(String(format: "%.3f", results.recallAt100))"
+            )
+        }
+        let report = BenchmarkReport(
+            rows: rows,
+            datasetLabel: datasetLabel,
+            metadata: benchmarkMetadata(
+                mode: "nprobe-sweep",
+                config: baseConfig,
+                datasetLabel: datasetLabel,
+                csvOut: options.csvOutPath,
+                repeatRuns: options.repeatRuns,
+                warmupRuns: options.warmupRuns,
+                seed: options.seed
+            )
+        )
+        print(report.renderTable())
+        if let csvOutPath = options.csvOutPath {
+            try report.saveCSV(to: csvOutPath)
+            print("Saved CSV: \(csvOutPath)")
         }
 
     case .sweep:

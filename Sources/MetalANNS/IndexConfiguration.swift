@@ -1,5 +1,13 @@
 import MetalANNSCore
 
+/// Search backend selection. `.exact` is the default fused scan (recall@k = 1).
+/// `.fast` opts into host IVF-flat (probed inverted lists, exact within the
+/// probe). Default search must stay exact; `.fast` is never implied.
+public enum SearchMode: String, Sendable, Codable, Equatable {
+    case exact
+    case fast
+}
+
 public struct IndexConfiguration: Sendable, Codable {
     /// Default ceiling (1M vectors) for the fused exact-search path.
     public static let defaultExactSearchMaxVectorCount = 1_000_000
@@ -20,6 +28,12 @@ public struct IndexConfiguration: Sendable, Codable {
     /// brute force). `0` disables the path entirely. Above this limit search
     /// falls back to the graph traversal backend.
     public var exactSearchMaxVectorCount: Int
+    /// `.fast` selects host IVF-flat (approximate). Default is `.exact`.
+    public var searchMode: SearchMode
+    /// Coarse k-means list count for `.fast`. Clamped at search time.
+    public var ivfListCount: Int
+    /// Number of inverted lists probed for `.fast`.
+    public var ivfNProbe: Int
 
     public static let `default` = IndexConfiguration(
         degree: 32,
@@ -45,7 +59,10 @@ public struct IndexConfiguration: Sendable, Codable {
         convergenceThreshold: Float = 0.001,
         hnswConfiguration: HNSWConfiguration = .default,
         repairConfiguration: RepairConfiguration = .default,
-        exactSearchMaxVectorCount: Int = IndexConfiguration.defaultExactSearchMaxVectorCount
+        exactSearchMaxVectorCount: Int = IndexConfiguration.defaultExactSearchMaxVectorCount,
+        searchMode: SearchMode = .exact,
+        ivfListCount: Int = IVFFlatSearch.defaultListCount,
+        ivfNProbe: Int = IVFFlatSearch.defaultNProbe
     ) {
         self.degree = degree
         self.metric = metric
@@ -58,6 +75,9 @@ public struct IndexConfiguration: Sendable, Codable {
         self.hnswConfiguration = hnswConfiguration
         self.repairConfiguration = repairConfiguration
         self.exactSearchMaxVectorCount = exactSearchMaxVectorCount
+        self.searchMode = searchMode
+        self.ivfListCount = max(1, ivfListCount)
+        self.ivfNProbe = max(1, ivfNProbe)
     }
 
     /// Returns true when `degree` satisfies GPU NN-Descent kernel constraints.
@@ -107,5 +127,12 @@ public struct IndexConfiguration: Sendable, Codable {
                 Int.self,
                 forKey: .exactSearchMaxVectorCount
             ) ?? IndexConfiguration.defaultExactSearchMaxVectorCount
+        searchMode = try container.decodeIfPresent(SearchMode.self, forKey: .searchMode) ?? .exact
+        ivfListCount =
+            try container.decodeIfPresent(Int.self, forKey: .ivfListCount)
+            ?? IVFFlatSearch.defaultListCount
+        ivfNProbe =
+            try container.decodeIfPresent(Int.self, forKey: .ivfNProbe)
+            ?? IVFFlatSearch.defaultNProbe
     }
 }
