@@ -228,6 +228,15 @@ struct BatchExecutionTests {
         let singleResult = try await index.batchSearch(queries: [vectors[7]], k: 10)
         #expect(singleResult.count == 1)
         #expect(singleResult[0].contains(where: { $0.id == "v7" }))
+
+        // k above the fused exact-scan cap must not clamp per-shard fetch
+        // below the caller k (self-match still has to survive the merge).
+        let deepK = FlatGPUSearch.maxTopK + 44
+        let deepResult = try await index.batchSearch(queries: [vectors[7]], k: deepK)
+        #expect(deepResult.count == 1)
+        #expect(deepResult[0].count > 10)
+        #expect(deepResult[0].count <= deepK)
+        #expect(deepResult[0].contains(where: { $0.id == "v7" }))
     }
 
     // MARK: - Fixtures

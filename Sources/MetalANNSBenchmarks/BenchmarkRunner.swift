@@ -15,6 +15,9 @@ struct BenchmarkRunner {
         /// When true, search latency is measured at exactly `k` results.
         /// When false (default), searches fetch top-100 so recall@100 stays measurable.
         var exactTopK: Bool = false
+        var searchMode: SearchMode = .exact
+        var ivfListCount: Int = IVFFlatSearch.defaultListCount
+        var ivfNProbe: Int = IVFFlatSearch.defaultNProbe
     }
 
     struct Results {
@@ -386,7 +389,10 @@ struct BenchmarkRunner {
                 degree: config.degree,
                 metric: config.metric,
                 efSearch: config.efSearch,
-                exactSearchMaxVectorCount: config.exactSearchMaxVectorCount
+                exactSearchMaxVectorCount: config.exactSearchMaxVectorCount,
+                searchMode: config.searchMode,
+                ivfListCount: config.ivfListCount,
+                ivfNProbe: config.ivfNProbe
             )
         )
 
@@ -404,7 +410,12 @@ struct BenchmarkRunner {
 
         let firstQuery = queries[0]
         let coldStart = DispatchTime.now().uptimeNanoseconds
-        _ = try await index.search(query: firstQuery, k: queryK)
+        _ = try await index.search(
+            query: firstQuery,
+            k: queryK,
+            searchMode: config.searchMode,
+            nprobe: config.ivfNProbe
+        )
         let coldEnd = DispatchTime.now().uptimeNanoseconds
         let firstQueryLatencyMs = Double(coldEnd - coldStart) / 1_000_000.0
 
@@ -524,7 +535,9 @@ struct BenchmarkRunner {
         top100Count: Int,
         queries: [[Float]],
         expectedNeighbors: [[UInt32]],
-        measureLatency: Bool
+        measureLatency: Bool,
+        searchMode: SearchMode? = nil,
+        nprobe: Int? = nil
     ) async throws -> BenchmarkBatchStats {
         var latencies: [Double] = []
         if measureLatency {
@@ -540,7 +553,12 @@ struct BenchmarkRunner {
             let expected = expectedNeighbors[queryIndex]
 
             let searchStart = DispatchTime.now().uptimeNanoseconds
-            let approx = try await index.search(query: query, k: queryK)
+            let approx = try await index.search(
+                query: query,
+                k: queryK,
+                searchMode: searchMode,
+                nprobe: nprobe
+            )
             let searchEnd = DispatchTime.now().uptimeNanoseconds
 
             if measureLatency {
@@ -682,10 +700,17 @@ struct BenchmarkRunner {
         top1Count: Int,
         top10Count: Int,
         top100Count: Int,
-        measureLatency: Bool
+        measureLatency: Bool,
+        searchMode: SearchMode? = nil,
+        nprobe: Int? = nil
     ) async throws -> PerQueryStats {
         let searchStart = DispatchTime.now().uptimeNanoseconds
-        let approx = try await index.search(query: query, k: queryK)
+        let approx = try await index.search(
+            query: query,
+            k: queryK,
+            searchMode: searchMode,
+            nprobe: nprobe
+        )
         let searchEnd = DispatchTime.now().uptimeNanoseconds
 
         let latencyMs =

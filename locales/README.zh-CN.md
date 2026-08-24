@@ -2,6 +2,8 @@
 
 **Apple Silicon 原生 GPU 向量搜索。** 纯 Swift + Metal。无 C++。无云端。无妥协。
 
+当前数字（对比 FAISS / hnswlib / USearch / sqlite-vec）见英文 [README](../README.md) 与 [BENCHMARKS.md](../BENCHMARKS.md)。默认搜索为精确扫描。
+
 MetalANNS 为 iOS、macOS 和 visionOS 带来生产级近似最近邻搜索——完全在设备端运行，通过 Metal 计算着色器实现 GPU 加速。
 
 *[English](../README.md) | 中文 | [日本語](README.ja.md) | [Português](README.pt-BR.md) | [Español](README.es.md)*

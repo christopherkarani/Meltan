@@ -114,7 +114,7 @@ public actor _IVFPQIndex: Sendable {
             return
         }
         guard idMap.count + vectors.count <= capacity else {
-            throw ANNSError.constructionFailed("Index capacity exceeded")
+            throw ANNSError.indexCapacityExceeded
         }
 
         var seen = Set<String>()
@@ -222,7 +222,7 @@ public actor _IVFPQIndex: Sendable {
             }
         }
 
-        return merged.elements
+        return merged.sortedElements
     }
 
     public var count: Int {
@@ -508,7 +508,7 @@ public actor _IVFPQIndex: Sendable {
                 }
             }
         }
-        return closest.elements
+        return closest.sortedElements
     }
 
     private nonisolated static func nearestCoarseCentroid(

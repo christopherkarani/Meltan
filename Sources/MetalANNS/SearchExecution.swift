@@ -17,9 +17,54 @@ struct SearchRequest: Sendable {
     let entryPoint: UInt32
     let degree: Int
     let exactSearchMaxVectorCount: Int
+    let searchMode: SearchMode
+    let ivfListCount: Int
+    let ivfNProbe: Int
     let softDeletion: SoftDeletion
     let metadataStore: MetadataStore
     let idMap: IDMap
+
+    init(
+        query: [Float],
+        resultLimit: Int,
+        metric: Metric,
+        filter: _LegacySearchFilter?,
+        maxDistance: Float?,
+        fetchK: Int,
+        fetchEf: Int,
+        context: MetalContext?,
+        vectors: any VectorStorage,
+        graph: GraphBuffer,
+        entryPoint: UInt32,
+        degree: Int,
+        exactSearchMaxVectorCount: Int,
+        searchMode: SearchMode = .exact,
+        ivfListCount: Int = IVFFlatSearch.defaultListCount,
+        ivfNProbe: Int = IVFFlatSearch.defaultNProbe,
+        softDeletion: SoftDeletion,
+        metadataStore: MetadataStore,
+        idMap: IDMap
+    ) {
+        self.query = query
+        self.resultLimit = resultLimit
+        self.metric = metric
+        self.filter = filter
+        self.maxDistance = maxDistance
+        self.fetchK = fetchK
+        self.fetchEf = fetchEf
+        self.context = context
+        self.vectors = vectors
+        self.graph = graph
+        self.entryPoint = entryPoint
+        self.degree = degree
+        self.exactSearchMaxVectorCount = exactSearchMaxVectorCount
+        self.searchMode = searchMode
+        self.ivfListCount = ivfListCount
+        self.ivfNProbe = ivfNProbe
+        self.softDeletion = softDeletion
+        self.metadataStore = metadataStore
+        self.idMap = idMap
+    }
 }
 
 /// CPU traversal inputs prepared on the `GraphIndex` actor (lazy HNSW rebuild
@@ -36,8 +81,36 @@ protocol SearchTier: Sendable {
     func isEligible(_ request: SearchRequest) -> Bool
 
     /// Returns the tier's raw results, or nil when it cannot produce any and
-    /// the ladder should continue. Thrown `CancellationError` always aborts.
+    /// the ladder should continue to the next tier. Thrown errors are
+    /// tri-state: degradeable `ANNSError` degrades to the next tier,
+    /// `CancellationError` and any other error abort the cascade.
     func execute(_ request: SearchRequest) async throws -> [SearchResult]?
+}
+
+/// Host IVF-flat (approximate). Eligible only when the caller opted into
+/// `.fast` and the corpus is a resident Float32 `VectorBuffer`.
+struct IVFFlatSearchTier: SearchTier {
+    func isEligible(_ request: SearchRequest) -> Bool {
+        guard request.searchMode == .fast else { return false }
+        guard request.filter == nil else { return false }
+        guard request.metric != .hamming else { return false }
+        guard let vectors = request.vectors as? VectorBuffer, !vectors.isFloat16 else {
+            return false
+        }
+        return vectors.count >= IVFFlatSearch.minVectorCount
+    }
+
+    func execute(_ request: SearchRequest) async throws -> [SearchResult]? {
+        guard let vectors = request.vectors as? VectorBuffer else { return nil }
+        return try IVFFlatSearch.search(
+            query: request.query,
+            vectors: vectors,
+            k: request.fetchK,
+            nlist: request.ivfListCount,
+            nprobe: request.ivfNProbe,
+            metric: request.metric
+        )
+    }
 }
 
 /// Exact flat scan (GPU or host BLAS).
@@ -153,10 +226,14 @@ enum GraphSearchEngine {
                     pendingResults = results
                     break
                 }
-            } catch is CancellationError {
-                throw CancellationError()
             } catch {
-                continue
+                if error is CancellationError {
+                    throw error
+                }
+                if let tierError = error as? ANNSError, tierError.isTierDegradeable {
+                    continue
+                }
+                throw error
             }
         }
 
@@ -201,6 +278,7 @@ enum GraphSearchEngine {
                 metric: request.metric
             )
         }
+        try Task.checkCancellation()
         return try await BeamSearchCPU.search(
             query: request.query,
             vectors: prepared.vectors,

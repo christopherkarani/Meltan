@@ -17,11 +17,16 @@ import Foundation
 /// before returning — so sorting the collected `(position, output)` pairs by
 /// position restores the input order with every slot guaranteed present.
 enum BatchExecution {
+    /// - Parameters:
+    ///   - maxConcurrency: In-flight child-task window; clamped to at least 1
+    ///     (values <= 0 run serially) and to the element count. Children may
+    ///     themselves fan out, so the effective concurrency budget multiplies
+    ///     per nested window.
     static func run<Element: Sendable, Output: Sendable>(
         over elements: [Element],
         maxConcurrency: Int,
         _ operation: @escaping @Sendable (Element) async throws -> Output
-    ) async throws -> [Output] {
+    ) async rethrows -> [Output] {
         guard !elements.isEmpty else {
             return []
         }

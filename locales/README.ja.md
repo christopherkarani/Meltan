@@ -2,6 +2,8 @@
 
 **Apple Silicon ネイティブの GPU ベクトル検索。** Pure Swift + Metal。C++ 不要。クラウド不要。妥協なし。
 
+実測値（FAISS / hnswlib / USearch / sqlite-vec との比較）は英語の [README](../README.md) と [BENCHMARKS.md](../BENCHMARKS.md)。デフォルト検索は exact です。
+
 MetalANNS は、iOS、macOS、visionOS 向けのプロダクショングレードの近似最近傍探索ライブラリです。Metal コンピュートシェーダーによる GPU アクセラレーションで、完全にデバイス上で動作します。
 
 *[English](../README.md) | [中文](README.zh-CN.md) | 日本語 | [Português](README.pt-BR.md) | [Español](README.es.md)*

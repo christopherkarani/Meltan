@@ -105,7 +105,7 @@ public final class MetalContext: @unchecked Sendable {
         await commandBuffer.completed()
 
         if let error = commandBuffer.error {
-            throw ANNSError.gpuExecutionFailed("Command buffer failed: \(error.localizedDescription)")
+            throw ANNSError.gpuExecutionFailed("Command buffer failed: \(error)")
         }
     }
 }

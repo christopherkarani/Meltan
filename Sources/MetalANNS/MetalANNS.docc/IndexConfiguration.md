@@ -7,8 +7,10 @@ Controls the trade-offs between build speed, search speed, and recall quality.
 `IndexConfiguration` defines the core parameters for graph construction and search:
 
 - ``IndexConfiguration/degree`` — the maximum out-degree of each node in the CAGRA graph
-- ``IndexConfiguration/efSearch`` — the beam width during search (larger = better recall, slower)
+- ``IndexConfiguration/efSearch`` — the beam width during graph search (larger = better recall, slower)
 - ``IndexConfiguration/metric`` — the distance metric (cosine, L2, innerProduct, hamming)
+- ``IndexConfiguration/searchMode`` — `.exact` (default) or `.fast` IVF-flat
+- ``IndexConfiguration/ivfNProbe`` — inverted lists probed in `.fast` mode
 
 ## GPU Construction Constraints
 
@@ -25,6 +27,9 @@ When these constraints are violated, the library automatically falls back to CPU
 - ``IndexConfiguration/degree``
 - ``IndexConfiguration/efSearch``
 - ``IndexConfiguration/metric``
+- ``IndexConfiguration/searchMode``
+- ``IndexConfiguration/ivfNProbe``
+- ``IndexConfiguration/ivfListCount``
 
 ### Advanced Parameters
 

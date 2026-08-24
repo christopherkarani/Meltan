@@ -1,6 +1,155 @@
 # MetalANNS Benchmarks
 
-Last updated: `2026-08-22`
+Last updated: `2026-08-24`
+
+## 2026-08-24 — Opt-in `.fast` IVF-flat (bucket B @50k)
+
+Declared target: **10× vs the exact path at n=50k**, not 10× exact. Default
+search is unchanged (brute-force exact). `IndexConfiguration.searchMode =
+.fast` (CLI `--fast`) probes `nprobe` inverted lists and exact-scans the
+packed rows.
+
+### Same-process A/B (the 10× ratio)
+
+Release, M3 Max, thermal nominal, seed 42, dim 384, k 24, cosine, n=50_000,
+300 queries × 3 runs, warmup 2, `--exact-k`. One process, exact then `.fast`
+(`--ab-fast`):
+
+| Path | p50 | p95 | p99 | QPS | recall@10 | recall@100 |
+|---|---:|---:|---:|---:|---:|---:|
+| Exact (default) | 0.489 ms | 0.74 ms | 0.84 ms | 1 886 | 1.000 | 1.000 |
+| `.fast` nlist=256 nprobe=**4** | **0.033 ms** | 0.04 ms | 0.04 ms | 26 609 | **0.978** | 0.977 |
+
+**14.7×** vs the exact path in the same window. p50 **≤ 0.049 ms** and
+recall@10 **≥ 0.95**. At 10k the same protocol is 0.097 ms exact vs 0.017 ms
+`.fast` (5.8×, rec@10 0.976) — glue-bound, not the 10× scale.
+
+Physics that still holds: a single-query Metal round trip is ~179 µs p50, and
+a full 50k×384 fp32 scan is ~73 MB. `.fast` never takes that path; it reads
+`nprobe/nlist` of a copy-once packed corpus on the CPU.
+
+### Pareto (nprobe sweep, same corpus, `--csv-out`)
+
+| nprobe | p50 | QPS | recall@10 | recall@100 |
+|---:|---:|---:|---:|---:|
+| 1 | 0.017 ms | 45 719 | 0.677 | 0.666 |
+| 2 | 0.023 ms | 36 577 | 0.855 | 0.851 |
+| **4** | **0.037 ms** | **23 417** | **0.975** | **0.972** |
+| 8 | 0.061 ms | 15 010 | 1.000 | 0.999 |
+| 16 | 0.105 ms | 9 089 | 1.000 | 1.000 |
+
+Operating point for the 10× claim is **nprobe=4** (default). Raise nprobe if
+you want recall@10 = 1.000; do not claim 10× exact @50k. The harness generator
+is a 1-D sinusoid (`sin(i·0.173)+cos(i·0.071)`); IVF clusters it well.
+Uniform-sphere embeddings need a much higher nprobe for the same recall.
+
+### Concurrency (`--fast --concurrency-sweep 1,8,16`)
+
+c=1 recall@10 0.975, 25k QPS. c=8 101k QPS (no lock collapse). c=16 91k QPS,
+p50 0.14 ms under contention. IVF cache lock is only on overlay build.
+
+### Reproduce
+
+```bash
+swift build -c release
+
+# Exact (default)
+.build/release/MetalANNSBenchmarks --vector-count 50000 --query-count 300 \
+  --runs 3 --warmup 2 --dimension 384 --k 24 --exact-k --metric cosine --seed 42
+
+# Opt-in approximate (bucket B operating point)
+.build/release/MetalANNSBenchmarks --fast --vector-count 50000 --query-count 300 \
+  --runs 3 --warmup 2 --dimension 384 --k 24 --exact-k --metric cosine --seed 42
+
+# Same-process A/B (the 10× ratio)
+.build/release/MetalANNSBenchmarks --ab-fast --vector-count 50000 --query-count 300 \
+  --runs 3 --warmup 2 --dimension 384 --k 24 --exact-k --metric cosine --seed 42
+
+# Pareto CSV
+.build/release/MetalANNSBenchmarks --sweep-nprobe 1,2,4,8,16 --csv-out pareto.csv \
+  --vector-count 50000 --query-count 300 --runs 3 --warmup 2 --dimension 384 \
+  --k 24 --exact-k --metric cosine --seed 42
+
+# Concurrency
+.build/release/MetalANNSBenchmarks --fast --vector-count 50000 \
+  --concurrency-sweep 1,8,16 --dimension 384 --k 24 --exact-k --seed 42
+```
+
+## 2026-08-24 — Competitive bake-off vs embedded vector libraries
+
+Same-machine, same-corpus comparison against the libraries agent-memory and
+on-device search stacks actually embed. Single-query warm latency, the metric
+that matters for interactive memory recall.
+
+### Protocol
+
+- Apple M3 Max, macOS 26.0, release build, all backends in-process.
+- Corpus: dim 384 float32, Gaussian mixture over ≤256 centers (mimics the
+  topical clustering of agent-memory embeddings), L2-normalized rows, cosine,
+  deterministic under seed 42. Queries: 200 fresh draws (seed 7), k=10,
+  20-query warmup, individually timed.
+- Approximate backends (hnswlib, USearch, FAISS HNSW; M=16, efConstruction
+  200) were tuned upward by doubling `ef` until recall@10 ≥ 0.99 on a 50-query
+  probe, then measured at that operating point. Achieved recall is reported
+  per cell. This is the graphs' *honest* high-recall operating point — the
+  regime agent memory needs, where a missed memory is a wrong answer.
+- MetalANNS columns come from `MetalANNSBenchmarks` on a uniform-random corpus
+  of the same shape (its own harness). Exact-scan latency is corpus-content
+  independent, so quoting the harder distribution keeps its column
+  conservative. Recall is exact by construction (fuzz-verified); the 0.999 at
+  100k is fp32 tie-ordering versus the scalar reference.
+- Cross-harness absolute numbers carry the machine's ±30-40 % thermal swing;
+  treat ratios as the signal.
+
+### Results (single-query p50, µs)
+
+| Backend | 10k | 50k | 100k | Recall |
+|---|---:|---:|---:|---|
+| **MetalANNS (exact)** | **88** | **491** | **831** | 1.000 / 1.000 / 0.999 |
+| NumPy scan (exact) | 161 | 1 180 | 2 330 | 1.000 everywhere |
+| FAISS IndexFlatIP (exact) | 227 | 807 | 1 521 | 1.000 everywhere |
+| sqlite-vec (exact) | 794 | 3 956 | 7 906 | 1.000 everywhere |
+| FAISS HNSW (tuned) | 207 (ef 256) | 1 680 (ef 1024) | 4 024 (ef 2048) | 0.991 / 0.993 / 0.995 |
+| hnswlib (tuned) | 639 (ef 256) | 2 120 (ef 1024) | 3 096 (ef 2048) | 0.991 / 0.997 / 0.996 |
+| USearch (tuned) | 545 (ef 256) | 1 988 (ef 1024) | 7 693 (ef 4096) | 0.992 / 0.995 / 0.995 |
+
+![Competitive single-query latency](benchmarks/competitive-latency.png)
+
+### Reading
+
+- Fastest in every cell. 1.6–1.8× over the quickest exact alternative
+  (FAISS flat), 5–9× over sqlite-vec, and 2–5× over every graph index once
+  the graphs are held to ≥0.99 recall.
+- The graph indexes are only competitive when allowed to miss (ef 64 gives
+  sub-300 µs at 50k but recall 0.13–0.14 on this corpus). At the recall agent
+  memory requires, they need ef 1024–4096 and land 2–9× behind an exact scan.
+- Known limits, unchanged: at millions of vectors graph indexes win
+  decisively (exact search is DRAM-bandwidth-bound; see the wall analysis
+  below). These results cover the 10k–100k range typical of on-device memory.
+- Competing tools were used through their maintained Python bindings with
+  default SIMD dispatch on this machine; no backend was source-patched.
+
+### Reproduce
+
+```bash
+swift build -c release
+
+# MetalANNS columns (repeat for 10000 50000 100000)
+.build/release/MetalANNSBenchmarks --vector-count 10000 --dimension 384 --k 10 \
+  --query-count 200 --runs 3 --warmup 1 --seed 42 --exact-k --metric cosine \
+  --json-out .build/bakeoff/metalanns_10000.json
+
+# Competitors + merge + chart
+uv venv --python 3.12 .build/bakeoff-venv
+uv pip install --python .build/bakeoff-venv/bin/python \
+  faiss-cpu hnswlib usearch sqlite-vec matplotlib numpy
+.build/bakeoff-venv/bin/python scripts/competitive-benchmark.py \
+  --scales 10000,50000,100000 --metalanns-dir .build/bakeoff \
+  --out .build/bakeoff/results.json
+.build/bakeoff-venv/bin/python scripts/render-competitive-chart.py \
+  --results .build/bakeoff/results.json --out docs/benchmarks/competitive-latency.png
+```
+
 
 ## 2026-08-22 — Tiered exact search: parallel CPU scan + int8 bounded prefilter
 

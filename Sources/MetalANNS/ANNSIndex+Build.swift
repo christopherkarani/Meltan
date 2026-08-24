@@ -130,6 +130,17 @@ extension GraphIndex {
         self.mmapLifetime = nil
         self.pendingRepairIDs.removeAll()
         self.hnsw = nil
+
+        if configuration.searchMode == .fast,
+            configuration.metric != .hamming,
+            let prepared = vectorBuffer as? VectorBuffer
+        {
+            IVFFlatSearch.prepare(
+                vectors: prepared,
+                metric: configuration.metric,
+                nlist: configuration.ivfListCount
+            )
+        }
     }
 
 }
