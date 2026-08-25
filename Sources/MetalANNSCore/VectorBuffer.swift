@@ -48,6 +48,7 @@ public final class VectorBuffer: @unchecked Sendable {
         FlatGPUSearch.invalidateHostNormCache(buffer: buffer)
         Int8CodeCache.invalidate(buffer: buffer)
         IVFFlatSearch.invalidate(buffer: buffer)
+        ResidualCascade.invalidate(buffer: buffer)
     }
 
     public func setCount(_ newCount: Int) {
@@ -71,6 +72,7 @@ public final class VectorBuffer: @unchecked Sendable {
             FlatGPUSearch.invalidateHostNormCache(buffer: buffer)
             Int8CodeCache.invalidate(buffer: buffer)
             IVFFlatSearch.invalidate(buffer: buffer)
+            ResidualCascade.invalidate(buffer: buffer)
         }
     }
 
@@ -87,6 +89,7 @@ public final class VectorBuffer: @unchecked Sendable {
             FlatGPUSearch.invalidateHostNormCache(buffer: buffer)
             Int8CodeCache.invalidate(buffer: buffer)
             IVFFlatSearch.invalidate(buffer: buffer)
+            ResidualCascade.invalidate(buffer: buffer)
         }
     }
 
