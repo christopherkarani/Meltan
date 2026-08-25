@@ -1,13 +1,13 @@
 import Dispatch
 import Foundation
 
-public struct ProductQuantizer: Sendable, Codable {
-    public let numSubspaces: Int
-    public let centroidsPerSubspace: Int
-    public let subspaceDimension: Int
-    public let codebooks: [[[Float]]]
+package struct ProductQuantizer: Sendable, Codable {
+    package let numSubspaces: Int
+    package let centroidsPerSubspace: Int
+    package let subspaceDimension: Int
+    package let codebooks: [[[Float]]]
 
-    public static func train(
+    package static func train(
         vectors: [[Float]],
         numSubspaces: Int = 8,
         centroidsPerSubspace: Int = 256,
@@ -84,7 +84,7 @@ public struct ProductQuantizer: Sendable, Codable {
         )
     }
 
-    public func encode(vector: [Float]) throws -> [UInt8] {
+    package func encode(vector: [Float]) throws -> [UInt8] {
         let expectedDimension = numSubspaces * subspaceDimension
         guard vector.count == expectedDimension else {
             throw ANNSError.dimensionMismatch(expected: expectedDimension, got: vector.count)
@@ -117,7 +117,7 @@ public struct ProductQuantizer: Sendable, Codable {
         }
     }
 
-    public func encode(vector: [Float], subtracting centroid: [Float]) throws -> [UInt8] {
+    package func encode(vector: [Float], subtracting centroid: [Float]) throws -> [UInt8] {
         let expectedDimension = numSubspaces * subspaceDimension
         guard vector.count == expectedDimension else {
             throw ANNSError.dimensionMismatch(expected: expectedDimension, got: vector.count)
@@ -168,7 +168,7 @@ public struct ProductQuantizer: Sendable, Codable {
         }
     }
 
-    public func reconstruct(codes: [UInt8]) throws -> [Float] {
+    package func reconstruct(codes: [UInt8]) throws -> [Float] {
         guard codes.count == numSubspaces else {
             throw ANNSError.dimensionMismatch(expected: numSubspaces, got: codes.count)
         }
@@ -189,7 +189,7 @@ public struct ProductQuantizer: Sendable, Codable {
     // FIXME: Major — approximateDistance sums sub-distances across PQ sub-spaces.
     // This decomposition is only mathematically valid for L2/squared-L2.
     // For cosine or innerProduct metrics the result is silently incorrect.
-    public func approximateDistance(query: [Float], codes: [UInt8], metric: Metric) -> Float {
+    package func approximateDistance(query: [Float], codes: [UInt8], metric: Metric) -> Float {
         guard let table = distanceTableFlattened(query: query, metric: metric), codes.count == numSubspaces else {
             return Float.greatestFiniteMagnitude
         }

@@ -1,4 +1,4 @@
-public protocol QuantizedStorage: Sendable {
+package protocol QuantizedStorage: Sendable {
     /// Total number of quantized vectors available.
     var count: Int { get }
 

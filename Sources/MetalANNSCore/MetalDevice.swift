@@ -6,15 +6,15 @@ private let logger = Logger(subsystem: "com.metalanns", category: "MetalDevice")
 
 // Metal types (MTLDevice, MTLLibrary) are not marked Sendable by Apple,
 // but this type is immutable after init and safe to share across isolation boundaries.
-public final class MetalContext: @unchecked Sendable {
-    public let device: MTLDevice
-    public let commandQueue: MTLCommandQueue
-    public let queuePool: CommandQueuePool
-    public let library: MTLLibrary
-    public let pipelineCache: PipelineCache
-    public let searchBufferPool: SearchBufferPool
+package final class MetalContext: @unchecked Sendable {
+    package let device: MTLDevice
+    package let commandQueue: MTLCommandQueue
+    package let queuePool: CommandQueuePool
+    package let library: MTLLibrary
+    package let pipelineCache: PipelineCache
+    package let searchBufferPool: SearchBufferPool
 
-    public init() throws {
+    package init() throws {
         guard let device = MTLCreateSystemDefaultDevice() else {
             throw ANNSError.deviceNotSupported
         }
@@ -81,7 +81,7 @@ public final class MetalContext: @unchecked Sendable {
         return try device.makeLibrary(source: source, options: nil)
     }
 
-    public func execute(_ encode: (MTLCommandBuffer) throws -> Void) async throws {
+    package func execute(_ encode: (MTLCommandBuffer) throws -> Void) async throws {
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
             throw ANNSError.gpuResourceExhausted("Failed to create command buffer")
         }
@@ -95,7 +95,7 @@ public final class MetalContext: @unchecked Sendable {
     }
 
     /// Like execute(), but picks a queue from the pool for pipelining concurrent calls.
-    public func executeOnPool(_ encode: (MTLCommandBuffer) throws -> Void) async throws {
+    package func executeOnPool(_ encode: (MTLCommandBuffer) throws -> Void) async throws {
         let queue = await queuePool.next()
         guard let commandBuffer = queue.makeCommandBuffer() else {
             throw ANNSError.gpuResourceExhausted("Failed to create command buffer from pool queue")

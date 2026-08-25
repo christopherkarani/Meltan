@@ -1,11 +1,11 @@
 import Metal
 
 /// A fixed-size pool of MTLCommandQueues for pipelining GPU work across concurrent searches.
-public actor CommandQueuePool: Sendable {
-    public let queues: [MTLCommandQueue]
+package actor CommandQueuePool: Sendable {
+    package let queues: [MTLCommandQueue]
     private var nextIndex: Int = 0
 
-    public init(device: MTLDevice, count: Int = 4) throws {
+    package init(device: MTLDevice, count: Int = 4) throws {
         guard count > 0 else {
             throw ANNSError.constructionFailed("Command queue pool count must be > 0")
         }
@@ -24,7 +24,7 @@ public actor CommandQueuePool: Sendable {
     }
 
     /// Round-robin queue selection. Thread-safe via actor isolation.
-    public func next() -> MTLCommandQueue {
+    package func next() -> MTLCommandQueue {
         let queue = queues[nextIndex % queues.count]
         nextIndex &+= 1
         return queue

@@ -4,19 +4,6 @@ import Testing
 
 @Suite("CPU NN-Descent Tests")
 struct NNDescentCPUTests {
-    private func withVectorBuffer<T>(
-        _ values: [Float],
-        _ body: (UnsafeBufferPointer<Float>) async throws -> T
-    ) async throws -> T {
-        let buffer = UnsafeMutableBufferPointer<Float>.allocate(capacity: values.count)
-        buffer.initialize(from: values)
-        defer {
-            buffer.deinitialize()
-            buffer.deallocate()
-        }
-        return try await body(UnsafeBufferPointer(buffer))
-    }
-
     @Test("Constructs graph with correct dimensions")
     func graphDimensions() async throws {
         let n = 50
@@ -72,20 +59,10 @@ struct NNDescentCPUTests {
             maxIterations: 10
         )
 
-        let backend = AccelerateBackend()
-        let flat = vectors.flatMap { $0 }
         var totalRecall: Float = 0
 
         for i in 0..<n {
-            let distances = try await withVectorBuffer(flat) { pointer in
-                try await backend.computeDistances(
-                    query: vectors[i],
-                    vectors: pointer,
-                    vectorCount: n,
-                    dim: dim,
-                    metric: .cosine
-                )
-            }
+            let distances = vectors.map { SIMDDistance.distance($0, vectors[i], metric: .cosine) }
 
             let exactNeighbors = distances.enumerated()
                 .filter { $0.offset != i }

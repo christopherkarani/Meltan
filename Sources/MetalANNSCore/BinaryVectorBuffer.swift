@@ -4,17 +4,17 @@ import Metal
 /// 1-bit-per-dimension vector storage.
 /// Values are binarized as: value >= 0 -> 1, value < 0 -> 0.
 // Thread-safety: All mutable operations and reads are synchronized via an internal NSLock.
-public final class BinaryVectorBuffer: @unchecked Sendable {
-    public let buffer: MTLBuffer
-    public let dim: Int
-    public let capacity: Int
-    public private(set) var count: Int = 0
+package final class BinaryVectorBuffer: @unchecked Sendable {
+    package let buffer: MTLBuffer
+    package let dim: Int
+    package let capacity: Int
+    package private(set) var count: Int = 0
 
-    public let bytesPerVector: Int
+    package let bytesPerVector: Int
 
     private let rawPointer: UnsafeMutablePointer<UInt8>
 
-    public init(capacity: Int, dim: Int, device: MTLDevice? = nil) throws {
+    package init(capacity: Int, dim: Int, device: MTLDevice? = nil) throws {
         guard dim > 0, dim % 8 == 0 else {
             throw ANNSError.constructionFailed(
                 "BinaryVectorBuffer requires dim > 0 and dim % 8 == 0, got dim=\(dim)"
@@ -45,7 +45,7 @@ public final class BinaryVectorBuffer: @unchecked Sendable {
         )
     }
 
-    public func insert(vector: [Float], at index: Int) throws {
+    package func insert(vector: [Float], at index: Int) throws {
         guard vector.count == dim else {
             throw ANNSError.dimensionMismatch(expected: dim, got: vector.count)
         }
@@ -66,7 +66,7 @@ public final class BinaryVectorBuffer: @unchecked Sendable {
         }
     }
 
-    public func vector(at index: Int) -> [Float] {
+    package func vector(at index: Int) -> [Float] {
         precondition(index >= 0 && index < capacity, "Index out of bounds")
         let base = index * bytesPerVector
         var unpacked = [Float](repeating: 0, count: dim)
@@ -82,7 +82,7 @@ public final class BinaryVectorBuffer: @unchecked Sendable {
         return unpacked
     }
 
-    public func packedVector(at index: Int) -> [UInt8] {
+    package func packedVector(at index: Int) -> [UInt8] {
         precondition(index >= 0 && index < capacity, "Index out of bounds")
         let base = index * bytesPerVector
         let start = rawPointer.advanced(by: base)
@@ -91,13 +91,13 @@ public final class BinaryVectorBuffer: @unchecked Sendable {
 }
 
 extension BinaryVectorBuffer: VectorStorage {
-    public var isFloat16: Bool { false }
+    package var isFloat16: Bool { false }
 
-    public func setCount(_ newCount: Int) {
+    package func setCount(_ newCount: Int) {
         count = newCount
     }
 
-    public func batchInsert(vectors: [[Float]], startingAt start: Int) throws {
+    package func batchInsert(vectors: [[Float]], startingAt start: Int) throws {
         for (offset, vector) in vectors.enumerated() {
             try insert(vector: vector, at: start + offset)
         }

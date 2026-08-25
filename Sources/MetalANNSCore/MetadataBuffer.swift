@@ -7,11 +7,11 @@ import Metal
 //
 //
 //
-public final class MetadataBuffer: @unchecked Sendable {
-    public let buffer: MTLBuffer
+package final class MetadataBuffer: @unchecked Sendable {
+    package let buffer: MTLBuffer
     private let pointer: UnsafeMutablePointer<UInt32>
 
-    public init(device: MTLDevice? = nil) throws {
+    package init(device: MTLDevice? = nil) throws {
         guard let metalDevice = device ?? MTLCreateSystemDefaultDevice() else {
             throw ANNSError.constructionFailed("No Metal device available")
         }
@@ -26,27 +26,27 @@ public final class MetadataBuffer: @unchecked Sendable {
         memset(buffer.contents(), 0, byteLength)
     }
 
-    public var entryPointID: UInt32 {
+    package var entryPointID: UInt32 {
         get { pointer[0] }
         set { pointer[0] = newValue }
     }
 
-    public var nodeCount: UInt32 {
+    package var nodeCount: UInt32 {
         get { pointer[1] }
         set { pointer[1] = newValue }
     }
 
-    public var degree: UInt32 {
+    package var degree: UInt32 {
         get { pointer[2] }
         set { pointer[2] = newValue }
     }
 
-    public var dim: UInt32 {
+    package var dim: UInt32 {
         get { pointer[3] }
         set { pointer[3] = newValue }
     }
 
-    public var iterationCount: UInt32 {
+    package var iterationCount: UInt32 {
         get { pointer[4] }
         set { pointer[4] = newValue }
     }

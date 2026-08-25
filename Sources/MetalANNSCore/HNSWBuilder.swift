@@ -3,11 +3,11 @@ import os.log
 
 private let logger = Logger(subsystem: "com.metalanns", category: "HNSWBuilder")
 
-public enum HNSWBuilder {
+package enum HNSWBuilder {
     private static let defaultML = 1.4426950408889634
 
     /// Build HNSW skip layers from a complete base graph.
-    public static func buildLayers(
+    package static func buildLayers(
         vectors: any VectorStorage,
         graph: [[(UInt32, Float)]],
         nodeCount: Int,

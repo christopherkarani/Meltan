@@ -1,8 +1,8 @@
 import Foundation
 
-public enum HNSWSearchCPU {
+package enum HNSWSearchCPU {
     /// Search using HNSW layer hierarchy and beam search at layer 0.
-    public static func search(
+    package static func search(
         query: [Float],
         vectors: any VectorStorage,
         hnsw: HNSWLayers,
@@ -53,7 +53,7 @@ public enum HNSWSearchCPU {
         )
     }
 
-    public static func search(
+    package static func search(
         query: [Float],
         vectors: [[Float]],
         hnsw: HNSWLayers,

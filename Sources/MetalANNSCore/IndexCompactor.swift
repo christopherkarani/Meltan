@@ -1,14 +1,14 @@
 import Foundation
 import Metal
 
-public enum IndexCompactor {
-    public struct CompactionResult {
-        public let vectors: any VectorStorage
-        public let graph: GraphBuffer
-        public let idMap: IDMap
-        public let entryPoint: UInt32
+package enum IndexCompactor {
+    package struct CompactionResult {
+        package let vectors: any VectorStorage
+        package let graph: GraphBuffer
+        package let idMap: IDMap
+        package let entryPoint: UInt32
 
-        public init(
+        package init(
             vectors: any VectorStorage,
             graph: GraphBuffer,
             idMap: IDMap,
@@ -21,7 +21,7 @@ public enum IndexCompactor {
         }
     }
 
-    public static func compact(
+    package static func compact(
         vectors: any VectorStorage,
         graph: GraphBuffer,
         idMap: IDMap,

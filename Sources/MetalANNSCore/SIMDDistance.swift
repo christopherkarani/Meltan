@@ -1,7 +1,7 @@
 import Accelerate
 
-public enum SIMDDistance {
-    public static func cosine(_ a: [Float], _ b: [Float]) -> Float {
+package enum SIMDDistance {
+    package static func cosine(_ a: [Float], _ b: [Float]) -> Float {
         precondition(a.count == b.count)
         guard !a.isEmpty else {
             return 1.0
@@ -14,7 +14,7 @@ public enum SIMDDistance {
         }
     }
 
-    public static func cosine(_ a: UnsafePointer<Float>, _ b: UnsafePointer<Float>, dim: Int) -> Float {
+    package static func cosine(_ a: UnsafePointer<Float>, _ b: UnsafePointer<Float>, dim: Int) -> Float {
         precondition(dim >= 0)
         guard dim > 0 else {
             return 1.0
@@ -31,7 +31,7 @@ public enum SIMDDistance {
         return denom < 1e-10 ? 1.0 : (1.0 - (dot / denom))
     }
 
-    public static func l2(_ a: [Float], _ b: [Float]) -> Float {
+    package static func l2(_ a: [Float], _ b: [Float]) -> Float {
         precondition(a.count == b.count)
         guard !a.isEmpty else {
             return 0
@@ -44,7 +44,7 @@ public enum SIMDDistance {
         }
     }
 
-    public static func l2(_ a: UnsafePointer<Float>, _ b: UnsafePointer<Float>, dim: Int) -> Float {
+    package static func l2(_ a: UnsafePointer<Float>, _ b: UnsafePointer<Float>, dim: Int) -> Float {
         precondition(dim >= 0)
         guard dim > 0 else {
             return 0
@@ -55,7 +55,7 @@ public enum SIMDDistance {
         return distance
     }
 
-    public static func innerProduct(_ a: [Float], _ b: [Float]) -> Float {
+    package static func innerProduct(_ a: [Float], _ b: [Float]) -> Float {
         precondition(a.count == b.count)
         guard !a.isEmpty else {
             return 0
@@ -68,7 +68,7 @@ public enum SIMDDistance {
         }
     }
 
-    public static func innerProduct(_ a: UnsafePointer<Float>, _ b: UnsafePointer<Float>, dim: Int) -> Float {
+    package static func innerProduct(_ a: UnsafePointer<Float>, _ b: UnsafePointer<Float>, dim: Int) -> Float {
         precondition(dim >= 0)
         guard dim > 0 else {
             return 0
@@ -80,7 +80,7 @@ public enum SIMDDistance {
     }
 
     /// Hamming distance between two unpacked vectors where values are expected to be 0/1.
-    public static func hamming(_ a: [Float], _ b: [Float]) -> Float {
+    package static func hamming(_ a: [Float], _ b: [Float]) -> Float {
         precondition(a.count == b.count)
         var count = 0
         for index in 0..<a.count where a[index] != b[index] {
@@ -90,7 +90,7 @@ public enum SIMDDistance {
     }
 
     /// Hamming distance between two packed byte arrays.
-    public static func hamming(packed a: [UInt8], packed b: [UInt8]) -> Float {
+    package static func hamming(packed a: [UInt8], packed b: [UInt8]) -> Float {
         precondition(a.count == b.count)
         var bits = 0
         let wordCount = a.count / MemoryLayout<UInt64>.stride
@@ -111,7 +111,7 @@ public enum SIMDDistance {
         return Float(bits)
     }
 
-    public static func hamming(
+    package static func hamming(
         _ a: UnsafePointer<Float>,
         _ b: UnsafePointer<Float>,
         dim: Int
@@ -128,7 +128,7 @@ public enum SIMDDistance {
         return Float(count)
     }
 
-    public static func distance(_ a: [Float], _ b: [Float], metric: Metric) -> Float {
+    package static func distance(_ a: [Float], _ b: [Float], metric: Metric) -> Float {
         switch metric {
         case .cosine:
             cosine(a, b)
@@ -141,7 +141,7 @@ public enum SIMDDistance {
         }
     }
 
-    public static func distance(
+    package static func distance(
         _ a: UnsafePointer<Float>,
         _ b: UnsafePointer<Float>,
         dim: Int,

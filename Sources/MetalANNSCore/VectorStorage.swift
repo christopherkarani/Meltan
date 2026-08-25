@@ -3,7 +3,7 @@ import Metal
 
 /// Abstraction over Float32 and Float16 vector storage.
 /// Both buffer types conform so construction, search, and pruning can work generically.
-public protocol VectorStorage: AnyObject, Sendable {
+package protocol VectorStorage: AnyObject, Sendable {
     var buffer: MTLBuffer { get }
     var dim: Int { get }
     var capacity: Int { get }

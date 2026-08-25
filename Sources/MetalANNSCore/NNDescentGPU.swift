@@ -3,8 +3,8 @@ import os.log
 
 private let logger = Logger(subsystem: "com.metalanns", category: "NNDescentGPU")
 
-public enum NNDescentGPU {
-    public static func randomInit(
+package enum NNDescentGPU {
+    package static func randomInit(
         context: MetalContext,
         graph: GraphBuffer,
         nodeCount: Int,
@@ -41,7 +41,7 @@ public enum NNDescentGPU {
         logger.debug("random_init complete for \(nodeCount) nodes")
     }
 
-    public static func computeInitialDistances(
+    package static func computeInitialDistances(
         context: MetalContext,
         vectors: any VectorStorage,
         graph: GraphBuffer,
@@ -93,7 +93,7 @@ public enum NNDescentGPU {
         }
     }
 
-    public static func build(
+    package static func build(
         context: MetalContext,
         vectors: any VectorStorage,
         graph: GraphBuffer,
@@ -223,7 +223,7 @@ public enum NNDescentGPU {
         graph.setCount(nodeCount)
     }
 
-    public static func sortNeighborLists(
+    package static func sortNeighborLists(
         context: MetalContext,
         graph: GraphBuffer,
         nodeCount: Int

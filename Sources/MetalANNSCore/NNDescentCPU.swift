@@ -3,8 +3,8 @@ import os.log
 
 private let logger = Logger(subsystem: "com.metalanns", category: "NNDescentCPU")
 
-public enum NNDescentCPU {
-    public static func build(
+package enum NNDescentCPU {
+    package static func build(
         vectors: [[Float]],
         degree: Int,
         metric: Metric,

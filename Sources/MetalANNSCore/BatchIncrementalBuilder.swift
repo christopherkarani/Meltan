@@ -1,6 +1,6 @@
 import Foundation
 
-public enum BatchIncrementalBuilder {
+package enum BatchIncrementalBuilder {
     private struct Candidate {
         let nodeID: UInt32
         let distance: Float
@@ -9,7 +9,7 @@ public enum BatchIncrementalBuilder {
     /// Insert multiple vectors at once using:
     /// 1) sequential forward neighbor assignment and
     /// 2) one deferred batched reverse-update pass.
-    public static func batchInsert(
+    package static func batchInsert(
         vectors newVectors: [[Float]],
         startingAt startSlot: Int,
         into graph: GraphBuffer,

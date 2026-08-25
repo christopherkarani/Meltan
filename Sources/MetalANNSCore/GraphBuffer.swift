@@ -6,19 +6,19 @@ import Metal
 ///
 /// Thread-safety: All mutable operations (`setNeighbors`, `setCount`) and reads
 /// (`neighborIDs`, `neighborDistances`) are synchronized via an internal `NSLock`.
-public final class GraphBuffer: @unchecked Sendable {
-    public let adjacencyBuffer: MTLBuffer
-    public let distanceBuffer: MTLBuffer
-    public let degree: Int
-    public let capacity: Int
-    public var nodeCount: Int { lock.withLock { _nodeCount } }
+package final class GraphBuffer: @unchecked Sendable {
+    package let adjacencyBuffer: MTLBuffer
+    package let distanceBuffer: MTLBuffer
+    package let degree: Int
+    package let capacity: Int
+    package var nodeCount: Int { lock.withLock { _nodeCount } }
 
     private let idPointer: UnsafeMutablePointer<UInt32>
     private let distPointer: UnsafeMutablePointer<Float>
     private let lock = NSLock()
     private var _nodeCount: Int = 0
 
-    public init(capacity: Int, degree: Int, device: MTLDevice? = nil) throws {
+    package init(capacity: Int, degree: Int, device: MTLDevice? = nil) throws {
         guard capacity >= 0, degree > 0 else {
             throw ANNSError.constructionFailed("GraphBuffer requires capacity >= 0 and degree > 0")
         }
@@ -52,7 +52,7 @@ public final class GraphBuffer: @unchecked Sendable {
 
     /// Creates a graph view over pre-existing Metal buffers (e.g. mmap-backed bytesNoCopy buffers).
     /// Buffers must contain `capacity * degree` entries each.
-    public init(
+    package init(
         adjacencyBuffer: MTLBuffer,
         distanceBuffer: MTLBuffer,
         capacity: Int,
@@ -85,11 +85,11 @@ public final class GraphBuffer: @unchecked Sendable {
         self.distPointer = distanceBuffer.contents().bindMemory(to: Float.self, capacity: max(slotCount, 1))
     }
 
-    public func setCount(_ newCount: Int) {
+    package func setCount(_ newCount: Int) {
         lock.withLock { _nodeCount = newCount }
     }
 
-    public func setNeighbors(of nodeID: Int, ids: [UInt32], distances: [Float]) throws {
+    package func setNeighbors(of nodeID: Int, ids: [UInt32], distances: [Float]) throws {
         guard ids.count == degree, distances.count == degree else {
             throw ANNSError.constructionFailed("Neighbor count must equal degree \(degree)")
         }
@@ -106,7 +106,7 @@ public final class GraphBuffer: @unchecked Sendable {
         }
     }
 
-    public func neighborIDs(of nodeID: Int) -> [UInt32] {
+    package func neighborIDs(of nodeID: Int) -> [UInt32] {
         precondition(nodeID >= 0 && nodeID < capacity, "Node ID out of bounds")
         let base = nodeID * degree
         return lock.withLock {
@@ -114,7 +114,7 @@ public final class GraphBuffer: @unchecked Sendable {
         }
     }
 
-    public func neighborDistances(of nodeID: Int) -> [Float] {
+    package func neighborDistances(of nodeID: Int) -> [Float] {
         precondition(nodeID >= 0 && nodeID < capacity, "Node ID out of bounds")
         let base = nodeID * degree
         return lock.withLock {

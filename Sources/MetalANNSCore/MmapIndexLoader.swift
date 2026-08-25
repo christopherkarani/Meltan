@@ -2,21 +2,21 @@ import Darwin
 import Foundation
 import Metal
 
-public enum MmapIndexLoader {
+package enum MmapIndexLoader {
     private static let headerMagic: [UInt8] = [0x4D, 0x41, 0x4E, 0x4E]  // "MANN"
     private static let mmapVersion: UInt32 = 3
     private static var pageSize: Int { max(1, Int(getpagesize())) }
 
-    public struct MmapLoadResult {
-        public let vectors: any VectorStorage
-        public let graph: GraphBuffer
-        public let idMap: IDMap
-        public let entryPoint: UInt32
-        public let metric: Metric
-        public let isBinary: Bool
-        public let mmapLifetime: AnyObject
+    package struct MmapLoadResult {
+        package let vectors: any VectorStorage
+        package let graph: GraphBuffer
+        package let idMap: IDMap
+        package let entryPoint: UInt32
+        package let metric: Metric
+        package let isBinary: Bool
+        package let mmapLifetime: AnyObject
 
-        public init(
+        package init(
             vectors: any VectorStorage,
             graph: GraphBuffer,
             idMap: IDMap,
@@ -35,7 +35,7 @@ public enum MmapIndexLoader {
         }
     }
 
-    public static func load(from fileURL: URL, device: MTLDevice? = nil) throws -> MmapLoadResult {
+    package static func load(from fileURL: URL, device: MTLDevice? = nil) throws -> MmapLoadResult {
         let region = try MmapRegion(fileURL: fileURL)
 
         guard let metalDevice = device ?? MTLCreateSystemDefaultDevice() else {

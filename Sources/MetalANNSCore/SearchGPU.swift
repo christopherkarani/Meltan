@@ -1,7 +1,7 @@
 import Foundation
 import Metal
 
-public enum SearchGPU {
+package enum SearchGPU {
     // FIXME: Major — per-iteration GPU dispatch is catastrophically slow.
     // Each beam-search iteration dispatches one command buffer + allocates buffers.
     // For ef=200 iterating 100+ times, pure dispatch overhead reaches 5–20 ms.
@@ -14,7 +14,7 @@ public enum SearchGPU {
         let distance: Float
     }
 
-    public static func search(
+    package static func search(
         context: MetalContext,
         query: [Float],
         vectors: any VectorStorage,

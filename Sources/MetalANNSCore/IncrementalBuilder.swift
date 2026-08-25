@@ -1,13 +1,13 @@
 import Foundation
 import Metal
 
-public enum IncrementalBuilder {
+package enum IncrementalBuilder {
     private struct Candidate {
         let nodeID: UInt32
         let distance: Float
     }
 
-    public static func insert(
+    package static func insert(
         vector: [Float],
         at internalID: Int,
         into graph: GraphBuffer,

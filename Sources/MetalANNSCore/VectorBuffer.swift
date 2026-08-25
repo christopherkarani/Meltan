@@ -9,17 +9,17 @@ import Metal
 /// Thread-safety: All mutable operations (`insert`, `setCount`) and reads (`vector(at:)`)
 /// are synchronized via an internal `NSLock`. This makes `VectorBuffer` safe for concurrent
 /// access without relying solely on the owning actor's serialization.
-public final class VectorBuffer: @unchecked Sendable {
-    public let buffer: MTLBuffer
-    public let dim: Int
-    public let capacity: Int
-    public var count: Int { lock.withLock { _count } }
+package final class VectorBuffer: @unchecked Sendable {
+    package let buffer: MTLBuffer
+    package let dim: Int
+    package let capacity: Int
+    package var count: Int { lock.withLock { _count } }
 
     private let rawPointer: UnsafeMutablePointer<Float>
     private let lock = NSLock()
     private var _count: Int = 0
 
-    public init(capacity: Int, dim: Int, device: MTLDevice? = nil) throws {
+    package init(capacity: Int, dim: Int, device: MTLDevice? = nil) throws {
         guard capacity >= 0, dim > 0 else {
             throw ANNSError.constructionFailed("VectorBuffer requires capacity >= 0 and dim > 0")
         }
@@ -50,11 +50,11 @@ public final class VectorBuffer: @unchecked Sendable {
         IVFFlatSearch.invalidate(buffer: buffer)
     }
 
-    public func setCount(_ newCount: Int) {
+    package func setCount(_ newCount: Int) {
         lock.withLock { _count = newCount }
     }
 
-    public func insert(vector: [Float], at index: Int) throws {
+    package func insert(vector: [Float], at index: Int) throws {
         guard vector.count == dim else {
             throw ANNSError.dimensionMismatch(expected: dim, got: vector.count)
         }
@@ -74,7 +74,7 @@ public final class VectorBuffer: @unchecked Sendable {
         }
     }
 
-    public func batchInsert(vectors: [[Float]], startingAt start: Int) throws {
+    package func batchInsert(vectors: [[Float]], startingAt start: Int) throws {
         lock.withLock {
             for (offset, vector) in vectors.enumerated() {
                 let index = start + offset
@@ -90,7 +90,7 @@ public final class VectorBuffer: @unchecked Sendable {
         }
     }
 
-    public func vector(at index: Int) -> [Float] {
+    package func vector(at index: Int) -> [Float] {
         precondition(index >= 0 && index < capacity, "Index out of bounds")
         let offset = index * dim
         return lock.withLock {
@@ -99,7 +99,7 @@ public final class VectorBuffer: @unchecked Sendable {
         }
     }
 
-    public var floatPointer: UnsafeBufferPointer<Float> {
+    package var floatPointer: UnsafeBufferPointer<Float> {
         lock.withLock {
             UnsafeBufferPointer(start: rawPointer, count: capacity * dim)
         }
@@ -107,5 +107,5 @@ public final class VectorBuffer: @unchecked Sendable {
 }
 
 extension VectorBuffer: VectorStorage {
-    public var isFloat16: Bool { false }
+    package var isFloat16: Bool { false }
 }

@@ -1,12 +1,12 @@
 import Foundation
 
-public enum BeamSearchCPU {
+package enum BeamSearchCPU {
     private struct Candidate {
         let nodeID: UInt32
         let distance: Float
     }
 
-    public static func search(
+    package static func search(
         query: [Float],
         vectors: any VectorStorage,
         graph: [[(UInt32, Float)]],
@@ -34,7 +34,7 @@ public enum BeamSearchCPU {
         )
     }
 
-    public static func search(
+    package static func search(
         query: [Float],
         vectors: [[Float]],
         graph: [[(UInt32, Float)]],

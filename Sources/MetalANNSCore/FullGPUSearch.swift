@@ -1,10 +1,10 @@
 import Foundation
 import Metal
 
-public enum FullGPUSearch {
+package enum FullGPUSearch {
     private static let maxEF = 256
 
-    public static func search(
+    package static func search(
         context: MetalContext,
         query: [Float],
         vectors: any VectorStorage,

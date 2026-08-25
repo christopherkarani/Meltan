@@ -113,33 +113,3 @@ extension IDMap {
         try c.encode(internalToNumeric, forKey: .internalToNumeric)
     }
 }
-
-//
-// MARK: - Persistence Reconstruction
-extension IDMap {
-    package static func makeForPersistence(rows: [(String, UInt32)], nextID: UInt32) -> IDMap {
-        makeForPersistence(rows: rows, numericRows: [], nextID: nextID)
-    }
-
-    package static func makeForPersistence(
-        rows: [(String, UInt32)],
-        numericRows: [(UInt64, UInt32)],
-        nextID: UInt32
-    ) -> IDMap {
-        var map = IDMap()
-        map.externalToInternal.removeAll()
-        map.internalToExternal.removeAll()
-        map.numericToInternal.removeAll()
-        map.internalToNumeric.removeAll()
-        for (externalID, internalID) in rows {
-            map.externalToInternal[externalID] = internalID
-            map.internalToExternal[internalID] = externalID
-        }
-        for (numericID, internalID) in numericRows {
-            map.numericToInternal[numericID] = internalID
-            map.internalToNumeric[internalID] = numericID
-        }
-        map.nextID = nextID
-        return map
-    }
-}

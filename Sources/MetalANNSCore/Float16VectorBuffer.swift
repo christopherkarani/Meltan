@@ -4,15 +4,15 @@ import Metal
 /// GPU-resident flat buffer storing `capacity` vectors of `dim` dimensions in Float16.
 /// Layout: vector[i] starts at offset `i * dim` in the underlying half buffer.
 /// Converts `[Float]` <-> Float16 at the API boundary.
-public final class Float16VectorBuffer: @unchecked Sendable {
-    public let buffer: MTLBuffer
-    public let dim: Int
-    public let capacity: Int
-    public private(set) var count: Int = 0
+package final class Float16VectorBuffer: @unchecked Sendable {
+    package let buffer: MTLBuffer
+    package let dim: Int
+    package let capacity: Int
+    package private(set) var count: Int = 0
 
     private let rawPointer: UnsafeMutablePointer<UInt16>
 
-    public init(capacity: Int, dim: Int, device: MTLDevice? = nil) throws {
+    package init(capacity: Int, dim: Int, device: MTLDevice? = nil) throws {
         guard capacity >= 0, dim > 0 else {
             throw ANNSError.constructionFailed("Float16VectorBuffer requires capacity >= 0 and dim > 0")
         }
@@ -34,11 +34,11 @@ public final class Float16VectorBuffer: @unchecked Sendable {
         self.rawPointer = buffer.contents().bindMemory(to: UInt16.self, capacity: max(elementCount, 1))
     }
 
-    public func setCount(_ newCount: Int) {
+    package func setCount(_ newCount: Int) {
         count = newCount
     }
 
-    public func insert(vector: [Float], at index: Int) throws {
+    package func insert(vector: [Float], at index: Int) throws {
         guard vector.count == dim else {
             throw ANNSError.dimensionMismatch(expected: dim, got: vector.count)
         }
@@ -52,13 +52,13 @@ public final class Float16VectorBuffer: @unchecked Sendable {
         }
     }
 
-    public func batchInsert(vectors: [[Float]], startingAt start: Int) throws {
+    package func batchInsert(vectors: [[Float]], startingAt start: Int) throws {
         for (offset, vector) in vectors.enumerated() {
             try insert(vector: vector, at: start + offset)
         }
     }
 
-    public func vector(at index: Int) -> [Float] {
+    package func vector(at index: Int) -> [Float] {
         precondition(index >= 0 && index < capacity, "Index out of bounds")
         let offset = index * dim
         var result = [Float](repeating: 0, count: dim)
@@ -68,11 +68,11 @@ public final class Float16VectorBuffer: @unchecked Sendable {
         return result
     }
 
-    public var halfPointer: UnsafeBufferPointer<UInt16> {
+    package var halfPointer: UnsafeBufferPointer<UInt16> {
         UnsafeBufferPointer(start: rawPointer, count: capacity * dim)
     }
 }
 
 extension Float16VectorBuffer: VectorStorage {
-    public var isFloat16: Bool { true }
+    package var isFloat16: Bool { true }
 }

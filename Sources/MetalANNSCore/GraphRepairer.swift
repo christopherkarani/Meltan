@@ -3,9 +3,9 @@ import os.log
 
 private let logger = Logger(subsystem: "com.metalanns", category: "GraphRepairer")
 
-public enum GraphRepairer {
+package enum GraphRepairer {
     @discardableResult
-    public static func repair(
+    package static func repair(
         recentIDs: [UInt32],
         vectors: any VectorStorage,
         graph: GraphBuffer,

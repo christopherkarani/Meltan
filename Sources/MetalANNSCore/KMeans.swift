@@ -1,18 +1,18 @@
 import Dispatch
 import Foundation
 
-public enum KMeans {
-    public struct Result {
-        public let centroids: [[Float]]
-        public let assignments: [Int]
+package enum KMeans {
+    package struct Result {
+        package let centroids: [[Float]]
+        package let assignments: [Int]
 
-        public init(centroids: [[Float]], assignments: [Int]) {
+        package init(centroids: [[Float]], assignments: [Int]) {
             self.centroids = centroids
             self.assignments = assignments
         }
     }
 
-    public static func cluster(
+    package static func cluster(
         vectors: [[Float]],
         k: Int,
         maxIterations: Int = 20,
