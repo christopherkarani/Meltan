@@ -80,6 +80,21 @@ public enum FlatGPUSearch {
         if shouldUseHostPath(vectors: vectors, k: k, tierOverride: nil) || context == nil {
             return hostSearch(query: query, vectors: vectors, k: k, metric: metric)
         }
+        // Tier 2.5: residual-bound exact cascade for very large corpora.
+        // Provably identical top-k at a fraction of the fp32 scan bytes;
+        // nil (ineligible or build failure) falls through to the GPU tier.
+        if vectorCountForTiering >= ResidualCascade.minVectorCount,
+            let context,
+            let cascaded = await ResidualCascade.searchGPU(
+                context: context,
+                query: query,
+                vectors: vectors,
+                neighborTotal: k,
+                metric: metric
+            )
+        {
+            return cascaded
+        }
         // Tier 3: single-dispatch GPU flat scan (bandwidth-bound corpora).
         guard let context else { throw ANNSError.searchFailed("unreachable") }
         let batches = try await batchSearch(

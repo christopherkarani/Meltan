@@ -75,3 +75,77 @@ kernel void flat_scan_distances(
 
     distances[tid] = flat_finalize_metric(dotQV, normVSq, metricType, queryNormSq);
 }
+
+// Bound-only scan for the exact residual cascade. The PCA projection planes
+// are precomputed once on the host, so each query reads width projections per
+// row rather than all dim raw vector coordinates. The host then exact-rescores
+// only rows whose bound can beat the seed cutoff.
+struct residual_bound_parameters {
+    uint vectorCount;
+    uint headWidth;
+    uint metricType;
+    float queryTailNorm;
+    float queryNorm;
+    float queryNormSq;
+    float dotMean;
+    float meanNormSq;
+    float slack;
+    float absoluteSlack;
+};
+
+kernel void residual_compute_bounds(
+    device const float *projection [[buffer(0)]],
+    device const float *vDotMu [[buffer(1)]],
+    device const float *rowNormSq [[buffer(2)]],
+    device const float *tailNorm [[buffer(3)]],
+    device const float *queryHead [[buffer(4)]],
+    device float *lowerBounds [[buffer(5)]],
+    constant residual_bound_parameters &params [[buffer(6)]],
+    uint rowIndex [[thread_position_in_grid]]
+) {
+    if (rowIndex >= params.vectorCount) {
+        return;
+    }
+
+    float headDot = 0.0f;
+    // Projection is column-major in the GPU cache. A SIMD group therefore
+    // reads adjacent rows for each component instead of striding by width.
+    for (uint column = 0; column < params.headWidth; ++column) {
+        headDot += queryHead[column]
+            * projection[column * params.vectorCount + rowIndex];
+    }
+
+    float tailUpper = params.queryTailNorm * tailNorm[rowIndex]
+        * (1.0f + params.slack) + params.absoluteSlack;
+    float meanTerm = params.dotMean + vDotMu[rowIndex];
+    float inflation = params.slack * (
+        fabs(headDot) + fabs(meanTerm) + fabs(params.meanNormSq)
+        + fabs(tailUpper)
+    );
+    float dotUpper = headDot * (1.0f + params.slack) + tailUpper
+        + meanTerm - params.meanNormSq + inflation + params.absoluteSlack;
+    float normSquared = rowNormSq[rowIndex];
+
+    if (params.metricType == 0u) {
+        if (normSquared < 1e-20f || params.queryNorm < 1e-10f) {
+            lowerBounds[rowIndex] = 1.0f;
+            return;
+        }
+        float denominator = params.queryNorm * sqrt(normSquared);
+        float similarityUpper = (dotUpper - params.absoluteSlack) / denominator;
+        if (isnan(similarityUpper) || similarityUpper > 1.0f) {
+            similarityUpper = 1.0f;
+        }
+        lowerBounds[rowIndex] = 1.0f - similarityUpper;
+    } else if (params.metricType == 2u) {
+        lowerBounds[rowIndex] = -dotUpper;
+    } else {
+        float lowerNormSquared = normSquared * (1.0f - params.slack)
+            - params.absoluteSlack;
+        if (lowerNormSquared < 0.0f) {
+            lowerNormSquared = 0.0f;
+        }
+        float gap = params.queryNormSq - 2.0f * dotUpper + lowerNormSquared;
+        lowerBounds[rowIndex] = max(gap, 0.0f);
+    }
+}
