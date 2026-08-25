@@ -15,3 +15,5 @@ docs/prompts/
 docs/code-audit-report.md
 docs/code-review-report.md
 tasks/
+.skynex/production-gate.json
+.skynex/audit.log
